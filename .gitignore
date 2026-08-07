@@ -60,3 +60,13 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# --- RoutePic ---
+.DS_Store
+DerivedData/
+
+# Spike corpus — real GPX contains home addresses (DESIGN.md §11).
+# Never commit it.
+Corpus/
+*.gpx
+!Packages/**/Tests/**/*.gpx
