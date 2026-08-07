@@ -31,6 +31,20 @@ public struct Orientation: Sendable, Equatable, Hashable, CustomStringConvertibl
         return result
     }()
 
+    /// The eight rotations, without mirroring.
+    ///
+    /// Mirroring is far less useful than it looks. On an open, asymmetric route
+    /// a horizontal flip reads almost the same as some rotation already in the
+    /// set, so half a 16-cell sheet is near-duplicates — wasted pixels and
+    /// wasted model attention. It also changes the route's chirality: the
+    /// silhouette becomes one the person did not actually walk.
+    ///
+    /// `Orientation.all` keeps all sixteen because the index is persisted
+    /// (`Artwork.renderIndex`); this subset is what a contact sheet should
+    /// usually show. Spike SP-2 measures whether the mirrored half earns its
+    /// place.
+    public static let rotationsOnly: [Orientation] = Array(all.prefix(8))
+
     public static let identity = Orientation(rotationDegrees: 0, mirrored: false)
 
     public var description: String {

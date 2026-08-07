@@ -24,6 +24,12 @@ func usage() -> Never {
                                   [--only <index>]
           Render the 16 orientations (DESIGN.md §4.2) as PNGs.
 
+      shapelab sheet <route.gpx> --out <file.png> [--mode ...] [--trim <metres>]
+                                  [--size <px>] [--no-labels]
+          Render all 16 orientations as one labelled contact sheet.
+          ~16x fewer image tokens than 16 separate renders, and the only
+          shape that fits Apple's on-device 4K context.
+
       shapelab fingerprint <route.gpx> [--mode walk|run|drive] [--trim <metres>]
           Print the shape fingerprint (DESIGN.md §6.2) as JSON.
 
@@ -35,6 +41,8 @@ func usage() -> Never {
       --trim          Privacy trim in metres. Default: \(Int(RouteTrimmer.defaultTrimMeters)).
       --line-width    Control image stroke width. Default: 11.
       --only          Render a single orientation index (0–15) instead of all 16.
+      --size          Contact sheet canvas size in pixels. Default: 1024.
+      --no-labels     Omit cell numbers and separators from the sheet.
     """)
     exit(0)
 }
@@ -157,6 +165,35 @@ func renderCommand(_ options: Options) {
     }
 }
 
+func sheetCommand(_ options: Options) {
+    guard options.positional.count >= 2 else { fail("sheet needs a GPX path.") }
+    guard let outputPath = options.string("out") else { fail("sheet needs --out <file.png>.") }
+
+    let prepared = prepare(loadRoute(options.positional[1]), options)
+
+    var style = options.flags["no-labels"] != nil
+        ? ContactSheetRenderer.Style.bare
+        : ContactSheetRenderer.Style.standard
+    if let size = options.double("size") { style.canvasSize = size }
+
+    let renderer = ContactSheetRenderer(style: style)
+    let url = URL(fileURLWithPath: outputPath)
+    do {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try renderer.renderPNG(prepared).write(to: url)
+    } catch {
+        fail("could not write \(outputPath): \(error)")
+    }
+
+    let cells = renderer.orientations().count
+    print("Wrote a \(Int(style.canvasSize))px sheet with \(cells) cells to \(outputPath)")
+    print("  vertices: \(prepared.vertexCount)   length: \(Int(prepared.lengthMeters)) m")
+    print("")
+    print(renderer.layoutDescription())
+}
+
 func fingerprintCommand(_ options: Options) {
     guard options.positional.count >= 2 else { fail("fingerprint needs a GPX path.") }
     let prepared = prepare(loadRoute(options.positional[1]), options)
@@ -195,6 +232,7 @@ let options = Options(arguments)
 
 switch command {
 case "render": renderCommand(options)
+case "sheet": sheetCommand(options)
 case "fingerprint": fingerprintCommand(options)
 case "info": infoCommand(options)
 case "-h", "--help", "help": usage()
