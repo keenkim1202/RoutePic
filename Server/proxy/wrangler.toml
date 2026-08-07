@@ -1,0 +1,27 @@
+name = "routepic-proxy"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+
+# Secrets are set with `wrangler secret put`, never here:
+#   VLM_API_KEY, IMAGE_API_KEY
+[vars]
+VLM_ENDPOINT = "https://REPLACE-ME/v1/interpret"
+VLM_MODEL = "REPLACE-ME"
+IMAGE_ENDPOINT = "https://REPLACE-ME/v1/generate"
+IMAGE_MODEL = "REPLACE-ME"
+PUBLIC_OBJECT_BASE = "https://REPLACE-ME"
+
+[[kv_namespaces]]
+binding = "JOBS"
+id = "REPLACE-ME"
+
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "REPLACE-ME"
+
+[[r2_buckets]]
+binding = "OBJECTS"
+bucket_name = "routepic-generations"
+
+# DESIGN.md §11 — uploads must not outlive the request that needed them.
+# Apply with: wrangler r2 bucket lifecycle add routepic-generations --expire-days 7

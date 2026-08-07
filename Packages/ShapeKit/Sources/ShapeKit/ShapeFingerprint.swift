@@ -61,6 +61,33 @@ public struct ShapeFingerprint: Sendable, Equatable, Codable {
     /// Enclosed area ÷ convex hull area. `nil` unless the route is closed.
     public let convexRatio: Double?
 
+    /// A public memberwise initialiser: the synthesised one is internal, which
+    /// left this type constructible only from inside `ShapeKit` — unusable for
+    /// the packages that have to build a request or a test fixture.
+    public init(
+        closureRatio: Double,
+        aspectRatio: Double,
+        tortuosity: Double,
+        meanAbsoluteTurn: Double,
+        turnVariance: Double,
+        turnSkewness: Double,
+        occupancyFillRatio: Double,
+        protrusionCount: Int,
+        selfIntersectionCount: Int,
+        convexRatio: Double?
+    ) {
+        self.closureRatio = closureRatio
+        self.aspectRatio = aspectRatio
+        self.tortuosity = tortuosity
+        self.meanAbsoluteTurn = meanAbsoluteTurn
+        self.turnVariance = turnVariance
+        self.turnSkewness = turnSkewness
+        self.occupancyFillRatio = occupancyFillRatio
+        self.protrusionCount = protrusionCount
+        self.selfIntersectionCount = selfIntersectionCount
+        self.convexRatio = convexRatio
+    }
+
     public var isClosed: Bool { closureRatio <= Self.closureThreshold }
 
     /// Almost a straight line — nothing to see, so `DESIGN.md` §4.4 blocks
