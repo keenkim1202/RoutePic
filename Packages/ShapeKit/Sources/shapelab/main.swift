@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import ShapeKit
 
 /// `shapelab` — the spike tool and golden-test runner.
@@ -37,6 +38,14 @@ func usage() -> Never {
       shapelab info <route.gpx>
           Point counts, length, encoded blob size.
 
+      shapelab fidelity <route.gpx> <generated.png> [--only <index>] [--mode ...]
+                                    [--trim <metres>] [--edge-threshold <0..1>]
+          Score how much of a generated image is actually the route
+          (DESIGN.md 4.3). Prints JSON. Two directions:
+            routeToEdge  high = the route was not drawn
+            edgeToRoute  high = the image is full of things that are not
+                         the route (the confetti/stripes failure mode)
+
     OPTIONS
       --mode          Resample spacing preset. Default: run.
       --trim          Privacy trim in metres. Default: \(Int(RouteTrimmer.defaultTrimMeters)).
@@ -44,6 +53,8 @@ func usage() -> Never {
       --only          Render a single orientation index (0–15) instead of all 16.
       --size          Contact sheet canvas size in pixels. Default: 1024.
       --no-labels     Omit cell numbers and separators from the sheet.
+      --edge-threshold
+                      Sobel gradient cut for `fidelity`. Default: 0.12.
       --all-orientations
                       Put all 16 orientations on the sheet instead of the 8
                       rotations. The mirrored half is usually near-duplicate;
@@ -215,6 +226,51 @@ func fingerprintCommand(_ options: Options) {
     }
 }
 
+func fidelityCommand(_ options: Options) {
+    guard options.positional.count >= 3 else {
+        fail("fidelity needs a GPX path and a generated PNG path.")
+    }
+    let prepared = prepare(loadRoute(options.positional[1]), options)
+
+    let index = Int(options.double("only") ?? 0)
+    guard index >= 0, index < Orientation.all.count else {
+        fail("--only must be 0–\(Orientation.all.count - 1).")
+    }
+    let shape = prepared.oriented(Orientation.all[index])
+
+    let imagePath = options.positional[2]
+    guard
+        let source = CGImageSourceCreateWithURL(
+            URL(fileURLWithPath: imagePath) as CFURL, nil
+        ),
+        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+    else { fail("could not read image \(imagePath).") }
+
+    var configuration = ShapeFidelity.Configuration.standard
+    if let threshold = options.double("edge-threshold") { configuration.edgeThreshold = threshold }
+
+    do {
+        let score = try ShapeFidelity(configuration: configuration)
+            .score(generated: image, against: shape)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let payload: [String: Double] = [
+            "routeToEdge": score.routeToEdge,
+            "edgeToRoute": score.edgeToRoute,
+            "routeToEdgeP95": score.routeToEdgeP95,
+            "chamfer": score.chamfer,
+            "edgeDensity": score.edgeDensity,
+        ]
+        guard let json = try? encoder.encode(payload) else { fail("could not encode score.") }
+        print(String(decoding: json, as: UTF8.self))
+        if !score.isMeaningful {
+            print("// NOT MEANINGFUL: edge density \(score.edgeDensity) — image is near-uniform or all noise")
+        }
+    } catch {
+        fail("could not score: \(error)")
+    }
+}
+
 func infoCommand(_ options: Options) {
     guard options.positional.count >= 2 else { fail("info needs a GPX path.") }
     let route = loadRoute(options.positional[1])
@@ -239,6 +295,7 @@ let options = Options(arguments)
 switch command {
 case "render": renderCommand(options)
 case "sheet": sheetCommand(options)
+case "fidelity": fidelityCommand(options)
 case "fingerprint": fingerprintCommand(options)
 case "info": infoCommand(options)
 case "-h", "--help", "help": usage()
