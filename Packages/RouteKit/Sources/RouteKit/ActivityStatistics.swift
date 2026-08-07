@@ -34,6 +34,22 @@ public struct ActivityStatistics: Sendable, Equatable {
     public var gapDuration: TimeInterval
     public var elevationGainMeters: Double
 
+    public init(
+        distanceMeters: Double,
+        elapsedDuration: TimeInterval,
+        movingDuration: TimeInterval,
+        pausedDuration: TimeInterval,
+        gapDuration: TimeInterval,
+        elevationGainMeters: Double
+    ) {
+        self.distanceMeters = distanceMeters
+        self.elapsedDuration = elapsedDuration
+        self.movingDuration = movingDuration
+        self.pausedDuration = pausedDuration
+        self.gapDuration = gapDuration
+        self.elevationGainMeters = elevationGainMeters
+    }
+
     /// Metres per second over moving time. Zero when nothing moved.
     public var averageSpeed: Double {
         movingDuration > 0 ? distanceMeters / movingDuration : 0

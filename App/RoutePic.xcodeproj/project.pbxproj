@@ -1,0 +1,242 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5B5D123080835D78873A9825 /* ShapeKit */ = {isa = PBXBuildFile; productRef = BCA0D00535F055E4A7B26112 /* ShapeKit */; };
+		8BB3D98C09BE5C9580D743A8 /* RouteKit */ = {isa = PBXBuildFile; productRef = 985B29F49EC65B8D85393343 /* RouteKit */; };
+		0B5E28B8013B5A25BC19C617 /* RoutePicStore */ = {isa = PBXBuildFile; productRef = C89F1F8382EB56A19D583BF2 /* RoutePicStore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D44F6A826D1E5ADABE38EA2C /* RoutePic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RoutePic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		95D8CD8FD38852D1A647D0A1 /* RoutePic */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = ();
+			path = RoutePic;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C9A5E73ABEED5D2BA4FD41A6 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B5D123080835D78873A9825 /* ShapeKit */,
+				8BB3D98C09BE5C9580D743A8 /* RouteKit */,
+				0B5E28B8013B5A25BC19C617 /* RoutePicStore */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1CA69C9CFE6C5461BDE5DC89 = {
+			isa = PBXGroup;
+			children = (
+				95D8CD8FD38852D1A647D0A1 /* RoutePic */,
+				962BA49E326858E6861EC8D6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		962BA49E326858E6861EC8D6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D44F6A826D1E5ADABE38EA2C /* RoutePic.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		02631F9FF5125FB38B47583D /* RoutePic */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2CB2D958BE3956AAA28138D3;
+			buildPhases = (
+				E00906D05D2B5E8CA08CE4DA,
+				C9A5E73ABEED5D2BA4FD41A6,
+				7368906DB28954A1B5009093,
+			);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (
+				95D8CD8FD38852D1A647D0A1 /* RoutePic */,
+			);
+			name = RoutePic;
+			packageProductDependencies = (
+				BCA0D00535F055E4A7B26112 /* ShapeKit */,
+				985B29F49EC65B8D85393343 /* RouteKit */,
+				C89F1F8382EB56A19D583BF2 /* RoutePicStore */,
+			);
+			productName = RoutePic;
+			productReference = D44F6A826D1E5ADABE38EA2C /* RoutePic.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A9057D79CD46577194B612F6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					02631F9FF5125FB38B47583D = { CreatedOnToolsVersion = 26.6; };
+				};
+			};
+			buildConfigurationList = 07679C1EAD13504586108FFB;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = ( en, Base, );
+			mainGroup = 1CA69C9CFE6C5461BDE5DC89;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				95C249C3C9CF5A49A585B377 /* XCLocalSwiftPackageReference "../Packages/ShapeKit" */,
+				FE431B3DA463551AA4B492F0 /* XCLocalSwiftPackageReference "../Packages/RouteKit" */,
+				813EF0605A415914BD516A71 /* XCLocalSwiftPackageReference "../Packages/RoutePicStore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 962BA49E326858E6861EC8D6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				02631F9FF5125FB38B47583D /* RoutePic */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7368906DB28954A1B5009093 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E00906D05D2B5E8CA08CE4DA = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BAE8FCD619CA5ED3BB8EC49C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		AA90541C35305BFEABB32098 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		13C28C7B65645A2AB72F5FFD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ( "$(inherited)", "@executable_path/Frameworks", );
+				MARKETING_VERSION = 0.9;
+				PRODUCT_BUNDLE_IDENTIFIER = com.keen.routepic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		0DDB6567AD605F53BE3C75A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ( "$(inherited)", "@executable_path/Frameworks", );
+				MARKETING_VERSION = 0.9;
+				PRODUCT_BUNDLE_IDENTIFIER = com.keen.routepic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		07679C1EAD13504586108FFB = {
+			isa = XCConfigurationList;
+			buildConfigurations = ( BAE8FCD619CA5ED3BB8EC49C /* Debug */, AA90541C35305BFEABB32098 /* Release */, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2CB2D958BE3956AAA28138D3 = {
+			isa = XCConfigurationList;
+			buildConfigurations = ( 13C28C7B65645A2AB72F5FFD /* Debug */, 0DDB6567AD605F53BE3C75A8 /* Release */, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		95C249C3C9CF5A49A585B377 /* XCLocalSwiftPackageReference "../Packages/ShapeKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/ShapeKit;
+		};
+		FE431B3DA463551AA4B492F0 /* XCLocalSwiftPackageReference "../Packages/RouteKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/RouteKit;
+		};
+		813EF0605A415914BD516A71 /* XCLocalSwiftPackageReference "../Packages/RoutePicStore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/RoutePicStore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BCA0D00535F055E4A7B26112 /* ShapeKit */ = { isa = XCSwiftPackageProductDependency; productName = ShapeKit; };
+		985B29F49EC65B8D85393343 /* RouteKit */ = { isa = XCSwiftPackageProductDependency; productName = RouteKit; };
+		C89F1F8382EB56A19D583BF2 /* RoutePicStore */ = { isa = XCSwiftPackageProductDependency; productName = RoutePicStore; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A9057D79CD46577194B612F6 /* Project object */;
+}

@@ -34,8 +34,10 @@ public actor RecordingSession {
     public static let autoPauseDuration: TimeInterval = 60
     public static let autoPauseRadius: Double = 15
 
-    public let id: UUID
-    public let mode: RecordingMode
+    /// `nonisolated` because callers need the identity to find the journal file
+    /// without awaiting the actor.
+    public nonisolated let id: UUID
+    public nonisolated let mode: RecordingMode
     public private(set) var state: State = .idle
 
     private var points: [RoutePoint] = []
