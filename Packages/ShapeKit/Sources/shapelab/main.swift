@@ -25,10 +25,11 @@ func usage() -> Never {
           Render the 16 orientations (DESIGN.md §4.2) as PNGs.
 
       shapelab sheet <route.gpx> --out <file.png> [--mode ...] [--trim <metres>]
-                                  [--size <px>] [--no-labels]
-          Render all 16 orientations as one labelled contact sheet.
-          ~16x fewer image tokens than 16 separate renders, and the only
-          shape that fits Apple's on-device 4K context.
+                                  [--size <px>] [--no-labels] [--all-orientations]
+          Render the orientations as one labelled contact sheet: 8 rotations
+          on a 3x3 by default, or all 16 on a 4x4 with --all-orientations.
+          ~16x fewer image tokens than separate per-orientation renders, and
+          the only shape that fits Apple's on-device 4K context.
 
       shapelab fingerprint <route.gpx> [--mode walk|run|drive] [--trim <metres>]
           Print the shape fingerprint (DESIGN.md §6.2) as JSON.
@@ -43,6 +44,10 @@ func usage() -> Never {
       --only          Render a single orientation index (0–15) instead of all 16.
       --size          Contact sheet canvas size in pixels. Default: 1024.
       --no-labels     Omit cell numbers and separators from the sheet.
+      --all-orientations
+                      Put all 16 orientations on the sheet instead of the 8
+                      rotations. The mirrored half is usually near-duplicate;
+                      this exists so SP-2 can measure that rather than assume it.
     """)
     exit(0)
 }
@@ -175,6 +180,7 @@ func sheetCommand(_ options: Options) {
         ? ContactSheetRenderer.Style.bare
         : ContactSheetRenderer.Style.standard
     if let size = options.double("size") { style.canvasSize = size }
+    if options.flags["all-orientations"] != nil { style.orientations = Orientation.all }
 
     let renderer = ContactSheetRenderer(style: style)
     let url = URL(fileURLWithPath: outputPath)
