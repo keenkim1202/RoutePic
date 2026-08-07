@@ -146,6 +146,71 @@ struct RecordingSessionTests {
         #expect(!(await session.snapshot().suggestsPause))
     }
 
+    @Test("A held outlier is kept when the session ends, not discarded")
+    func pendingIsKeptOnFinish() async throws {
+        // DESIGN.md §5.4 — losing a coordinate the device reported is the worst
+        // failure here. Nothing will arrive to confirm the held fix, so it is
+        // committed rather than dropped.
+        // Run mode: 10 m/s is plausible there, so the five approach fixes are
+        // accepted and only the jump is held.
+        let session = RecordingSession(mode: .run)
+        await session.start(now: Sim.epoch)
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10), into: session)
+
+        let jump = Sim.fix(east: 5_000, north: 0, secondsIn: 5)
+        #expect(!(await session.ingest(jump, now: jump.timestamp)))   // held
+
+        let route = try #require(await session.finish(now: Sim.epoch.addingTimeInterval(6)))
+        #expect(route.points.count == 6)
+        #expect(route.points.last?.longitude == jump.longitude)
+    }
+
+    @Test("A held outlier is kept when the session pauses")
+    func pendingIsKeptOnPause() async throws {
+        let session = RecordingSession(mode: .run)
+        await session.start(now: Sim.epoch)
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10), into: session)
+
+        let jump = Sim.fix(east: 5_000, north: 0, secondsIn: 5)
+        await session.ingest(jump, now: jump.timestamp)
+        await session.pause(now: Sim.epoch.addingTimeInterval(6))
+
+        #expect(await session.snapshot().pointCount == 6)
+    }
+
+    @Test("A held outlier is kept when a gap interrupts the session")
+    func pendingIsKeptOnGap() async throws {
+        let session = RecordingSession(mode: .run)     // 60 s gap threshold
+        await session.start(now: Sim.epoch)
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10), into: session)
+
+        let jump = Sim.fix(east: 5_000, north: 0, secondsIn: 5)
+        await session.ingest(jump, now: jump.timestamp)
+        // Long silence, then a new stretch.
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10, startingAt: 400), into: session)
+
+        let route = try #require(await session.finish(now: Sim.epoch.addingTimeInterval(500)))
+        #expect(route.points.count == 11)          // 5 + held + 5
+        #expect(route.movingRuns.count == 2)
+    }
+
+    @Test("A stale fix does not cut the route in two")
+    func staleFixDoesNotCreateGap() async throws {
+        // A late-arriving reading must not be read as a dropout: that would
+        // split a continuous walk and draw it as two disconnected pieces.
+        let session = RecordingSession(mode: .run)
+        await session.start(now: Sim.epoch)
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10), into: session)
+
+        // Timestamped long after the last fix, but delivered stale.
+        let stale = Sim.fix(east: 100, north: 0, secondsIn: 500)
+        await session.ingest(stale, now: Sim.epoch.addingTimeInterval(600))
+
+        await Sim.feed(Sim.straightWalk(count: 5, metresPerFix: 10, startingAt: 6), into: session)
+        let route = try #require(await session.finish(now: Sim.epoch.addingTimeInterval(20)))
+        #expect(route.movingRuns.count == 1)
+    }
+
     @Test("A session with nothing usable finishes as nil")
     func emptySession() async {
         let session = RecordingSession(mode: .run)

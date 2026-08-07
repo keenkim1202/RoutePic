@@ -88,8 +88,16 @@ public actor RecordingSession {
         // against the last stored point instead would call standing still a
         // dropout, and would re-fire on every subsequent fix because the
         // reference never advances.
-        if let last = lastPositionedAt,
+        // A fix that fails the basic checks must not be allowed to cut the
+        // route: a single stale reading arriving late would otherwise split a
+        // continuous walk in two.
+        let isUsable = filter.preliminaryRejection(fix, now: now) == nil
+
+        if isUsable, let last = lastPositionedAt,
            fix.timestamp.timeIntervalSince(last) > mode.gapThreshold {
+            // A held outlier belongs to the run that is ending, not to the one
+            // after the gap. It is committed rather than dropped.
+            commitPendingFix(now: now)
             closeRun(.gap, at: fix.timestamp)
             journal?.append(.segmentBoundary(kind: .gap, at: fix.timestamp), now: now)
             // Nothing before the gap says anything about what comes after it.
@@ -129,7 +137,7 @@ public actor RecordingSession {
     public func pause(now: Date) {
         guard state == .recording else { return }
         state = .paused
-        filter.flushPending()
+        commitPendingFix(now: now)
         lastPositionedAt = nil
         closeRun(.paused, at: now)
         journal?.append(.segmentBoundary(kind: .paused, at: now), now: now)
@@ -152,7 +160,13 @@ public actor RecordingSession {
     /// recorded.
     public func finish(now: Date) -> Route? {
         guard state != .finished else { return route() }
-        if state == .recording { closeRun(.moving, at: now) }
+        if state == .recording {
+            // Nothing will arrive to confirm a held fix, and discarding a
+            // coordinate the device reported is the worst thing this engine can
+            // do (`DESIGN.md` §5.4).
+            commitPendingFix(now: now)
+            closeRun(.moving, at: now)
+        }
         state = .finished
         journal?.flush(now: now)
         journal?.close()
@@ -204,6 +218,18 @@ public actor RecordingSession {
             )
         }
         runStart = points.count
+    }
+
+    /// Moves any held outlier into the route.
+    ///
+    /// Called wherever the confirming fix will never come. The alternative —
+    /// dropping it — deletes a real reading to avoid showing a possibly wrong
+    /// one, which is the wrong way round for a recorder.
+    private func commitPendingFix(now: Date) {
+        guard let pending = filter.takePending() else { return }
+        points.append(pending.routePoint)
+        journal?.append(.fix(pending), now: now)
+        lastAcceptedFix = pending
     }
 
     private func updateStillness(with fix: LocationFix, now: Date) {

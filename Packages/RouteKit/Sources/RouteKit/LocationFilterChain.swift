@@ -15,10 +15,15 @@ public struct LocationFilterChain: Sendable {
 
     public enum Rejection: String, Sendable, Equatable {
         case stale
+        /// Timestamped in the future — a clock that has just been corrected, or
+        /// a bad reading. Accepting it poisons every later age and speed check.
+        case fromTheFuture
         case warmingUp
         case invalidAccuracy
         case poorAccuracy
-        case implausibleSpeed
+        /// Same timestamp as, or earlier than, the last accepted fix. Not an
+        /// outlier: there is no elapsed time to judge speed against.
+        case outOfOrder
         case tooClose
     }
 
@@ -57,12 +62,24 @@ public struct LocationFilterChain: Sendable {
     /// Feeds one fix through the chain.
     ///
     /// `now` is injected so tests can run without sleeping.
+    /// The checks that decide whether a fix is worth looking at at all.
+    ///
+    /// Exposed so the session can run them *before* deciding a silence was a
+    /// dropout: a stale or unusable fix must not be allowed to cut the route in
+    /// two.
+    public func preliminaryRejection(_ fix: LocationFix, now: Date) -> Rejection? {
+        let age = now.timeIntervalSince(fix.timestamp)
+        if age > Self.maximumAge { return .stale }
+        // A negative age is a fix from the future. `age <= maximumAge` alone
+        // waves those through.
+        if age < -Self.maximumAge { return .fromTheFuture }
+        if !fix.hasValidHorizontalAccuracy { return .invalidAccuracy }
+        return nil
+    }
+
     public mutating func accept(_ fix: LocationFix, now: Date) -> Decision {
-        guard now.timeIntervalSince(fix.timestamp) <= Self.maximumAge else {
-            return .rejected(.stale)
-        }
-        guard fix.hasValidHorizontalAccuracy else {
-            return .rejected(.invalidAccuracy)
+        if let rejection = preliminaryRejection(fix, now: now) {
+            return .rejected(rejection)
         }
 
         // Warm-up is measured by accuracy, not by counting fixes. v0.1 dropped
@@ -81,6 +98,13 @@ public struct LocationFilterChain: Sendable {
 
         guard let previous = lastAccepted else {
             return store(fix)
+        }
+
+        // A fix that is not strictly later than the last accepted one has no
+        // elapsed time to judge speed against. Treating it as an outlier would
+        // let it evict a genuinely held fix.
+        guard fix.timestamp > previous.timestamp else {
+            return .rejected(.outOfOrder)
         }
 
         if let held = heldOutlier {
@@ -130,9 +154,16 @@ public struct LocationFilterChain: Sendable {
         return .accepted([fix])
     }
 
-    /// Drops any held outlier. Called when a session pauses or ends so a
-    /// pending fix cannot leak into the next segment.
-    public mutating func flushPending() {
-        heldOutlier = nil
+    /// Hands back any held outlier and stops holding it.
+    ///
+    /// The session calls this when there will be no next fix to confirm with —
+    /// a pause, a dropout, the end of a session. It **returns** the fix rather
+    /// than discarding it: an unconfirmed fix is still a coordinate the device
+    /// reported, and `DESIGN.md` §5.4 makes losing a received coordinate the
+    /// worst failure this engine has. One suspicious point at the end of a
+    /// segment is visible and correctable; a silently deleted one is neither.
+    public mutating func takePending() -> LocationFix? {
+        defer { heldOutlier = nil }
+        return heldOutlier
     }
 }

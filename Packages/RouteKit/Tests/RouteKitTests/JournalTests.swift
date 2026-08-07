@@ -160,6 +160,61 @@ struct JournalTests {
         journal.close()
     }
 
+    @Test("A tail too short to be a frame is still reported as damage")
+    func shortTailIsDamage() throws {
+        // Silence here would tell the UI the recording was complete when its
+        // end had been lost.
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let journal = try SessionJournal(url: url)
+        for fix in Sim.straightWalk(count: 10) { journal.append(.fix(fix), now: fix.timestamp) }
+        journal.close()
+
+        var bytes = try Data(contentsOf: url)
+        bytes.append(contentsOf: [0x52, 0x50, 0x00])   // a frame header cut off mid-write
+
+        let recovered = JournalReader.read(bytes)
+        #expect(recovered.sawCorruption)
+        #expect(recovered.discardedTailBytes == 3)
+        #expect(recovered.route.points.count == 10)
+    }
+
+    @Test("Extra bytes inside a valid frame are rejected")
+    func trailingBytesInPayload() {
+        // A CRC that happens to match does not make a frame correct: the length
+        // field and the schema must agree.
+        var payload = SessionJournal.encode(.checkpoint(distanceMeters: 1, movingDuration: 2, at: Sim.epoch))
+        payload.append(0xAB)                       // one byte the decoder will not consume
+
+        var frame = Data([0x52, 0x50, UInt8(payload.count >> 8), UInt8(payload.count & 0xFF)])
+        frame.append(payload)
+        let crc = CRC32.checksum(payload)
+        frame.append(contentsOf: [
+            UInt8((crc >> 24) & 0xFF), UInt8((crc >> 16) & 0xFF),
+            UInt8((crc >> 8) & 0xFF), UInt8(crc & 0xFF),
+        ])
+
+        let recovered = JournalReader.read(frame)
+        #expect(recovered.sawCorruption)
+        #expect(recovered.lastCheckpoint == nil)
+    }
+
+    @Test("Close reports failure instead of stranding buffered records")
+    func closeReportsSuccess() throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let journal = try SessionJournal(url: url)
+        for fix in Sim.straightWalk(count: 3) { journal.append(.fix(fix), now: fix.timestamp) }
+        #expect(journal.close())
+        #expect(journal.unflushedByteCount == 0)
+
+        // Appending after close is ignored rather than crashing on a dead handle.
+        journal.append(.fix(Sim.fix(east: 0, north: 0, secondsIn: 99)))
+        #expect(journal.unflushedByteCount == 0)
+    }
+
     @Test("An empty journal reads as an empty route, not an error")
     func emptyJournal() {
         let recovered = JournalReader.read(Data())

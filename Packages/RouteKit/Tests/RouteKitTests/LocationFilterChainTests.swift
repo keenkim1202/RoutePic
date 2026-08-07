@@ -142,6 +142,42 @@ struct LocationFilterChainTests {
         #expect(run(fixes, mode: .drive).decisions.acceptedCount == 2)
     }
 
+    @Test("A fix from the future is rejected, not treated as fresh")
+    func futureFix() {
+        // `now - timestamp <= maximumAge` is satisfied by any negative age, so a
+        // clock correction would otherwise wave a future fix straight through.
+        var chain = LocationFilterChain(mode: .run)
+        let fix = Sim.fix(east: 0, north: 0, secondsIn: 3_600)
+        #expect(chain.accept(fix, now: Sim.epoch) == .rejected(.fromTheFuture))
+    }
+
+    @Test("A held outlier is handed back rather than dropped")
+    func takePendingReturnsTheFix() {
+        // DESIGN.md §5.4 — the caller decides what to do with it; the filter
+        // must not delete a coordinate the device reported.
+        var chain = LocationFilterChain(mode: .run)
+        _ = chain.accept(Sim.fix(east: 0, north: 0, secondsIn: 0), now: Sim.epoch)
+
+        let jump = Sim.fix(east: 5_000, north: 0, secondsIn: 1)
+        #expect(chain.accept(jump, now: jump.timestamp) == .pending)
+        #expect(chain.takePending() == jump)
+        #expect(chain.takePending() == nil)
+    }
+
+    @Test("An out-of-order fix does not evict a held one")
+    func outOfOrderDoesNotEvictPending() {
+        var chain = LocationFilterChain(mode: .run)
+        _ = chain.accept(Sim.fix(east: 0, north: 0, secondsIn: 10), now: Sim.epoch.addingTimeInterval(10))
+
+        let jump = Sim.fix(east: 5_000, north: 0, secondsIn: 11)
+        #expect(chain.accept(jump, now: jump.timestamp) == .pending)
+
+        // Same timestamp as the last accepted fix: no elapsed time to judge.
+        let sameTime = Sim.fix(east: 50, north: 0, secondsIn: 10)
+        #expect(chain.accept(sameTime, now: sameTime.timestamp.addingTimeInterval(1)) == .rejected(.outOfOrder))
+        #expect(chain.takePending() == jump)     // still held
+    }
+
     @Test("Zero and negative time deltas are not plausible")
     func nonPositiveTimeDelta() {
         var chain = LocationFilterChain(mode: .run)
@@ -149,6 +185,6 @@ struct LocationFilterChainTests {
 
         // Same timestamp: dividing by zero would otherwise produce infinity.
         let sameTime = Sim.fix(east: 50, north: 0, secondsIn: 10)
-        #expect(chain.accept(sameTime, now: sameTime.timestamp) == .pending)
+        #expect(chain.accept(sameTime, now: sameTime.timestamp) == .rejected(.outOfOrder))
     }
 }

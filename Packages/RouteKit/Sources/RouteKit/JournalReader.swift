@@ -99,6 +99,12 @@ public enum JournalReader {
             )
         }
 
+        // Bytes left over that are too short to be a frame header are a
+        // truncated write, not padding. Without this the loop exits quietly and
+        // the caller is told the file was clean — so the UI would not mention
+        // that the end of the recording was lost.
+        if cursor < bytes.count { sawCorruption = true }
+
         return Recovered(
             sessionID: sessionID,
             mode: mode,
@@ -133,6 +139,13 @@ public enum JournalReader {
             return value
         }
 
+        /// A record must consume its payload exactly. Trailing bytes mean the
+        /// length field and the schema disagree — a frame written by a different
+        /// version, or a corruption the CRC happened not to catch.
+        func exactlyConsumed<T>(_ value: T?) -> T? {
+            index == payload.endIndex ? value : nil
+        }
+
         switch kind {
         case 0x01:
             guard
@@ -140,37 +153,39 @@ public enum JournalReader {
                 let modeString = readString(), let mode = RecordingMode(rawValue: modeString),
                 let start = readDouble()
             else { return nil }
-            return .header(
+            return exactlyConsumed(.header(
                 sessionID: id, mode: mode, startedAt: Date(timeIntervalSince1970: start)
-            )
+            ))
         case 0x02:
             var values: [Double] = []
             for _ in 0..<7 {
                 guard let value = readDouble() else { return nil }
                 values.append(value)
             }
-            return .fix(
+            return exactlyConsumed(.fix(
                 LocationFix(
                     latitude: values[0], longitude: values[1], altitude: values[2],
                     timestamp: Date(timeIntervalSince1970: values[3]),
                     horizontalAccuracy: values[4], verticalAccuracy: values[5], speed: values[6]
                 )
-            )
+            ))
         case 0x03:
             guard
                 let kindString = readString(), let segmentKind = SegmentKind(rawValue: kindString),
                 let at = readDouble()
             else { return nil }
-            return .segmentBoundary(kind: segmentKind, at: Date(timeIntervalSince1970: at))
+            return exactlyConsumed(
+                .segmentBoundary(kind: segmentKind, at: Date(timeIntervalSince1970: at))
+            )
         case 0x04:
             guard
                 let distance = readDouble(), let movingDuration = readDouble(),
                 let at = readDouble()
             else { return nil }
-            return .checkpoint(
+            return exactlyConsumed(.checkpoint(
                 distanceMeters: distance, movingDuration: movingDuration,
                 at: Date(timeIntervalSince1970: at)
-            )
+            ))
         default:
             return nil
         }

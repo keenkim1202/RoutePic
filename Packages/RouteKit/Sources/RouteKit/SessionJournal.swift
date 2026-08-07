@@ -67,9 +67,23 @@ public final class SessionJournal: @unchecked Sendable {
     private var lastFlush: Date
     private let lock = NSLock()
 
+    private var _writeFailure: String?
+    private var isClosed = false
+
     /// Set when a write fails. The session keeps recording in memory and the UI
     /// warns, rather than the recording dying silently (`DESIGN.md` §14.1).
-    public private(set) var writeFailure: String?
+    ///
+    /// Read under the lock: this object is `@unchecked Sendable` and the writer
+    /// runs on whichever thread delivered the fix.
+    public var writeFailure: String? {
+        lock.withLock { _writeFailure }
+    }
+
+    /// Records still held in memory because a write failed. Non-zero means the
+    /// session is at risk.
+    public var unflushedByteCount: Int {
+        lock.withLock { buffer.count }
+    }
 
     public init(url: URL, policy: Policy = Policy(), now: Date = Date()) throws {
         self.url = url
@@ -110,6 +124,7 @@ public final class SessionJournal: @unchecked Sendable {
     public func append(_ record: Record, now: Date = Date()) {
         lock.lock()
         defer { lock.unlock() }
+        guard !isClosed else { return }
 
         buffer.append(Self.frame(record))
         framesSinceFlush += 1
@@ -138,27 +153,62 @@ public final class SessionJournal: @unchecked Sendable {
         }
         do {
             try handle.write(contentsOf: buffer)
-            try handle.synchronize()
-            buffer.removeAll(keepingCapacity: true)
-            framesSinceFlush = 0
-            lastFlush = now
-            writeFailure = nil
         } catch {
             // Keep the buffer: a full disk may free up, and losing the session
             // is worse than holding a few kilobytes in memory.
-            writeFailure = error.localizedDescription
+            _writeFailure = error.localizedDescription
+            return
+        }
+
+        // The bytes are with the OS now, so the buffer is cleared *before*
+        // syncing. Keeping it across a failed `synchronize()` would append the
+        // same frames again on the next flush, duplicating coordinates and
+        // segment boundaries in the recovered route.
+        buffer.removeAll(keepingCapacity: true)
+        framesSinceFlush = 0
+        lastFlush = now
+
+        do {
+            try handle.synchronize()
+            _writeFailure = nil
+        } catch {
+            // Written but not durable. Worth surfacing, not worth rewriting.
+            _writeFailure = "Not yet written to disk: \(error.localizedDescription)"
         }
     }
 
-    public func close() {
-        flush()
+    /// Flushes and closes. Returns whether everything reached the file.
+    ///
+    /// A failed flush leaves the handle **open** and the journal usable: closing
+    /// it would strand the buffered records in memory with no way to retry, and
+    /// those records are the part of the session not yet on disk.
+    @discardableResult
+    public func close() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return true }
+
+        flushLocked(now: Date())
+        guard buffer.isEmpty else { return false }
+
+        isClosed = true
         try? handle.close()
+        return true
     }
 
     // MARK: - Framing
 
+    /// The length field is 16 bits, so a payload cannot exceed this. No record
+    /// comes close today; the guard exists because silently truncating the high
+    /// bits would misplace every frame boundary after it.
+    static let maximumPayloadSize = 0xFFFF
+
     static func frame(_ record: Record) -> Data {
         let payload = encode(record)
+        precondition(
+            payload.count <= maximumPayloadSize,
+            "Journal payload of \(payload.count) bytes exceeds the 16-bit length field."
+        )
         var frame = Data()
         frame.append(UInt8(frameMagic >> 8))
         frame.append(UInt8(frameMagic & 0xFF))

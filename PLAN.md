@@ -374,7 +374,7 @@ Cloudflare Workers (또는 Supabase Edge). **좌표는 절대 받지 않는다.*
 | M6 생성 | 🟡 **코어 완료** | **26 테스트 통과**. 프록시 코드 존재. **엔드투엔드 미검증** — API 키 없음 |
 | M7 마감 | 🟡 부분 | 상태 배너·접근성·삭제·EXIF 제거·GPX 내보내기 완료. 배터리(T-2)·실기기 테스트 차단 |
 
-**합계 198 테스트 통과** (ShapeKit 97 · RouteKit 58 · Store 17 · Generation 26).
+**합계 208 테스트 통과** (ShapeKit 97 · RouteKit 68 · Store 17 · Generation 26).
 
 ### 차단 항목 — 사용자만 해소 가능
 
@@ -385,17 +385,18 @@ Cloudflare Workers (또는 Supabase Edge). **좌표는 절대 받지 않는다.*
 | 3 | 실기기 + Apple Developer 계정 | M2-B, M3 T-3, M7 T-2 |
 | 4 | 평가자 5인 | SP-1 블라인드 비교 |
 
-### 구현이 잡아낸 설계·구현 오류 누계 **17건**
+### 구현이 잡아낸 설계·구현 오류 누계 **28건**
 
-| M | 건수 | 대표 |
+| 출처 | 건수 | 대표 |
 |---|---|---|
-| M1 | 5 | 트림이 gap 구조 파괴 · 골격 분기 수가 항상 0 · 투영 순서 |
-| M3 | 4 | 서 있으면 auto-pause 영구 미발동 · 확인된 이상치 유실 · 고도 히스테리시스 3 m가 GPS 노이즈보다 작음 |
-| M4 | 4 | `#Index`가 iOS 18 필요 · `FileManager` 비-Sendable · CoreText 키 · actor 격리 |
-| M6 | 3 | 빈 성공에 과금 · 서버 시계로 만료 판정 · `ShapeFingerprint` public init 부재 |
-| 자체리뷰 | 5 | **세션 시작 fix 유실 레이스** · 모드 필터가 페이징 파괴 · `.constant` 바인딩 · `try!` · 데드코드 |
+| M1 테스트 | 5 | 트림이 gap 구조 파괴 · 골격 분기 수가 항상 0 · 투영 순서 |
+| M3 테스트 | 4 | 서 있으면 auto-pause 영구 미발동 · 확인된 이상치가 호출자에 미전달 · 고도 히스테리시스 3 m가 GPS 노이즈보다 작음 |
+| M4 빌드 | 4 | `#Index`가 iOS 18 필요 · `FileManager` 비-Sendable · CoreText 키 · actor 격리 |
+| M6 테스트 | 3 | 빈 성공에 과금 · 서버 시계로 만료 판정 · `ShapeFingerprint` public init 부재 |
+| 자체 리뷰 | 6 | **세션 시작 fix 유실 레이스** · 모드 필터가 페이징 파괴 · 잘린 꼬리 조용히 통과 · `.constant` 바인딩 · `try!` · 데드코드 |
+| **Codex 코드 검토** | **6** | **보류 좌표가 pause·gap·finish에서 유실**(HIGH) · **flush 실패 후 close가 버퍼를 고아로 만듦**(HIGH) · **`synchronize()` 실패 시 프레임 중복**(HIGH) · 무효 fix가 경로를 절단 · 미래 timestamp 통과 · payload 길이 오버플로 |
 
-문서 검토(Claude·Codex 2회)에서는 **한 건도** 나오지 않았던 유형이 다수다.
+문서 검토(Claude·Codex 각 1회)에서는 **한 건도** 나오지 않은 유형이 대부분이다. 반면 Codex의 **코드** 검토는 문서 검토가 못 잡은 데이터 손실 경로 3건을 잡았다 — 리뷰는 대상이 문서냐 코드냐에 따라 잡는 것이 완전히 다르다.
 
 ---
 
