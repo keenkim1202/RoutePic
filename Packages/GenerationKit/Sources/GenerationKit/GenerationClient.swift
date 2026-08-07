@@ -4,10 +4,23 @@ import ShapeKit
 /// Talks to the proxy. Abstracted so the policy above it is testable without a
 /// network, an API key, or money.
 public protocol GenerationTransport: Sendable {
+    /// Whether running this transport costs the user's allowance.
+    ///
+    /// On-device generation spends battery, not money, so quota must not be
+    /// reserved against it — a metered ledger on a free path would refuse
+    /// generations for no reason and make the free tier look broken.
+    var isMetered: Bool { get }
+
     func submit(_ request: GenerationRequest) async throws -> GenerationJob
     func poll(jobID: String) async throws -> GenerationJob
     func cancel(jobID: String) async throws
     func download(_ url: URL) async throws -> Data
+}
+
+extension GenerationTransport {
+    /// Metered by default: a transport that costs nothing has to say so
+    /// explicitly, so the safe assumption is the one that protects the budget.
+    public var isMetered: Bool { true }
 }
 
 /// What the app should do with a route right now.
@@ -112,6 +125,9 @@ public actor GenerationClient {
                 reason: "This route is too short to make a picture from."
             )
         }
+        // An unmetered transport has no allowance to exhaust, and works
+        // offline — the two remaining reasons to refuse do not apply.
+        guard transport.isMetered else { return .available(remaining: .max) }
         guard isOnline else { return .offline }
 
         let state = await quota.snapshot()
@@ -123,10 +139,13 @@ public actor GenerationClient {
         _ request: GenerationRequest,
         now: @Sendable @escaping () -> Date = Date.init
     ) async throws -> [GeneratedCandidate] {
-        do {
-            try await quota.reserve(1, key: request.idempotencyKey, now: now())
-        } catch let failure as QuotaLedger.Failure {
-            throw Failure.quota(failure)
+        let metered = transport.isMetered
+        if metered {
+            do {
+                try await quota.reserve(1, key: request.idempotencyKey, now: now())
+            } catch let failure as QuotaLedger.Failure {
+                throw Failure.quota(failure)
+            }
         }
 
         var job: GenerationJob
@@ -134,7 +153,7 @@ public actor GenerationClient {
             job = try await transport.submit(request)
         } catch {
             // Nothing was started, so the reservation goes straight back.
-            await quota.refund(key: request.idempotencyKey)
+            if metered { await quota.refund(key: request.idempotencyKey) }
             throw Failure.transport(error.localizedDescription)
         }
 
@@ -145,7 +164,7 @@ public actor GenerationClient {
         var attempt = 0
         while !job.status.isTerminal {
             if now().timeIntervalSince(startedAt) >= policy.timeout {
-                await quota.refund(key: request.idempotencyKey)
+                if metered { await quota.refund(key: request.idempotencyKey) }
                 try? await transport.cancel(jobID: job.id)
                 throw Failure.expired
             }
@@ -153,11 +172,11 @@ public actor GenerationClient {
                 try await sleep(policy.interval(forAttempt: attempt))
                 job = try await transport.poll(jobID: job.id)
             } catch is CancellationError {
-                await quota.refund(key: request.idempotencyKey)
+                if metered { await quota.refund(key: request.idempotencyKey) }
                 try? await transport.cancel(jobID: job.id)
                 throw Failure.cancelled
             } catch {
-                await quota.refund(key: request.idempotencyKey)
+                if metered { await quota.refund(key: request.idempotencyKey) }
                 throw Failure.transport(error.localizedDescription)
             }
             attempt += 1
@@ -169,23 +188,23 @@ public actor GenerationClient {
         // empty result.
         switch job.status {
         case .succeeded where job.candidates.isEmpty:
-            await quota.refund(key: request.idempotencyKey)
+            if metered { await quota.refund(key: request.idempotencyKey) }
             throw Failure.jobFailed("The service returned no images.")
 
         case .succeeded:
-            await quota.settle(job)
+            if metered { await quota.settle(job) }
             return job.candidates
 
         case .cancelled:
-            await quota.settle(job)
+            if metered { await quota.settle(job) }
             throw Failure.cancelled
 
         case .expired:
-            await quota.settle(job)
+            if metered { await quota.settle(job) }
             throw Failure.expired
 
         default:
-            await quota.settle(job)
+            if metered { await quota.settle(job) }
             throw Failure.jobFailed(job.failureReason ?? "unknown")
         }
     }

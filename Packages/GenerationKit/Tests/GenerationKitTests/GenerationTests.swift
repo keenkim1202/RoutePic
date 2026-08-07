@@ -22,6 +22,8 @@ private func fingerprint(degenerate: Bool = false) -> ShapeFingerprint {
 
 private func request(key: String = "key-1") -> GenerationRequest {
     GenerationRequest(
+        contactSheet: Data([0x89, 0x50, 0x4E, 0x47]),
+        sheetLayout: "A 3×3 grid of the same route…",
         orientationImages: Array(repeating: Data([0x89, 0x50]), count: 16),
         fingerprint: fingerprint(),
         stylePreset: "flat-vector",
@@ -32,7 +34,10 @@ private func request(key: String = "key-1") -> GenerationRequest {
 }
 
 /// Scripted transport: each poll returns the next status in the list.
+/// Metered, like the real server transport.
 private actor ScriptedTransport: GenerationTransport {
+    nonisolated var isMetered: Bool { true }
+
     var statuses: [GenerationJob.Status]
     var candidates: [GeneratedCandidate]
     var submitError: (any Error)?
@@ -388,6 +393,7 @@ struct GenerationJobTests {
         // that structural rather than a promise: there is nowhere to put one.
         let submitted = request()
         #expect(submitted.orientationImages.count == 16)
+        #expect(!submitted.contactSheet.isEmpty)
         #expect(Mirror(reflecting: submitted).children.allSatisfy { child in
             !(child.label ?? "").lowercased().contains("lat")
                 && !(child.label ?? "").lowercased().contains("lon")

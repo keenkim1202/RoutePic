@@ -131,9 +131,23 @@ public struct GeneratedCandidate: Sendable, Equatable, Codable {
 
 /// What the app sends. **Never coordinates** (`DESIGN.md` §11).
 public struct GenerationRequest: Sendable, Equatable {
-    /// Normalised control images, one per orientation. Position information is
-    /// gone by construction: the shape was projected onto its own centroid and
-    /// scaled to a fixed canvas.
+    /// One labelled grid of every orientation, for Stage 1.
+    ///
+    /// Stage 1 only has to *compare* orientations, and a single sheet does that
+    /// at ~1,400 image tokens where separate attachments cost ~22,400. It is
+    /// also the only form that fits Apple's 4K on-device context.
+    public var contactSheet: Data
+    /// How the sheet is laid out and numbered, from
+    /// `ContactSheetRenderer.layoutDescription()`. Sent so the model is told the
+    /// numbering rather than inferring it.
+    public var sheetLayout: String
+
+    /// Full-resolution control images, one per orientation — for Stage 2.
+    ///
+    /// Stage 2 conditions on a single chosen orientation and needs the detail a
+    /// grid cell throws away, so the sheet does not replace these. Position
+    /// information is gone by construction: the shape was projected onto its own
+    /// centroid and scaled to a fixed canvas.
     public var orientationImages: [Data]
     public var fingerprint: ShapeFingerprint
     public var stylePreset: String
@@ -142,6 +156,8 @@ public struct GenerationRequest: Sendable, Equatable {
     public var idempotencyKey: String
 
     public init(
+        contactSheet: Data,
+        sheetLayout: String,
         orientationImages: [Data],
         fingerprint: ShapeFingerprint,
         stylePreset: String,
@@ -149,6 +165,8 @@ public struct GenerationRequest: Sendable, Equatable {
         controlStrength: Double,
         idempotencyKey: String = UUID().uuidString
     ) {
+        self.contactSheet = contactSheet
+        self.sheetLayout = sheetLayout
         self.orientationImages = orientationImages
         self.fingerprint = fingerprint
         self.stylePreset = stylePreset
