@@ -71,8 +71,13 @@ final class AppEnvironment {
         } catch {
             // A corrupt or unwritable store must not be a silent blank app: fall
             // back to memory so the user can still record, and say what happened.
+            // If even that fails there is nothing left to run, so the crash is
+            // honest rather than a `try!` hidden in a recovery path.
+            guard let memory = try? ActivityRepository.inMemoryContainer() else {
+                fatalError("SwiftData could not create an in-memory container: \(error)")
+            }
             let environment = AppEnvironment(
-                container: try! ActivityRepository.inMemoryContainer(),
+                container: memory,
                 artworkStore: InMemoryArtworkStore(),
                 locationSource: ClassicLocationSource()
             )

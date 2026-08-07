@@ -11,6 +11,7 @@ struct RecordView: View {
     @State private var selectedMode: RecordingMode = .run
     @State private var savedActivity: Activity?
     @State private var showsDiscardConfirmation = false
+    @State private var showsRecoverySheet = false
 
     private var recorder: RecordingController { environment.recorder }
 
@@ -24,13 +25,21 @@ struct RecordView: View {
                 }
             }
             .navigationTitle("Record")
-            .task { recorder.scanForRecovery() }
+            .task {
+                recorder.scanForRecovery()
+                showsRecoverySheet = !recorder.recoveryCandidates.isEmpty
+            }
             .sheet(item: $savedActivity) { activity in
                 ActivitySummarySheet(activity: activity)
             }
-            .sheet(isPresented: .constant(!recorder.recoveryCandidates.isEmpty)) {
+            // A real binding, not `.constant`: a constant one can never be set
+            // back to false, so the sheet could not be dismissed.
+            .sheet(isPresented: $showsRecoverySheet) {
                 RecoverySheet(candidates: recorder.recoveryCandidates, recorder: recorder)
                     .interactiveDismissDisabled()
+            }
+            .onChange(of: recorder.recoveryCandidates.count) { _, count in
+                showsRecoverySheet = count > 0
             }
         }
     }

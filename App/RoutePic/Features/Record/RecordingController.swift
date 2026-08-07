@@ -62,9 +62,23 @@ final class RecordingController {
         let session = RecordingSession(id: id, mode: mode, journal: journal)
         self.session = session
 
+        // The stream is installed *before* the source starts. The other order
+        // is a race: `start()` can deliver its first fixes before `updates()`
+        // has somewhere to put them, and those fixes are simply lost — which is
+        // precisely the beginning of the route.
+        let stream = locationSource.updates()
+        pumpTask = Task { [weak self] in
+            for await fix in stream {
+                guard let self else { return }
+                await self.handle(fix)
+            }
+        }
+
         do {
             try await locationSource.start(mode: mode)
         } catch {
+            pumpTask?.cancel()
+            pumpTask = nil
             phase = .failed(describe(error))
             self.session = nil
             return
@@ -73,14 +87,6 @@ final class RecordingController {
         await session.start(now: Date())
         phase = .running
         snapshot = await session.snapshot()
-
-        pumpTask = Task { [weak self] in
-            guard let stream = self?.locationSource.updates() else { return }
-            for await fix in stream {
-                guard let self else { return }
-                await self.handle(fix)
-            }
-        }
     }
 
     private func handle(_ fix: LocationFix) async {
@@ -112,7 +118,6 @@ final class RecordingController {
         pumpTask?.cancel()
         await locationSource.stop()
 
-        let startedAt = snapshot.map { _ in Date() } ?? Date()
         let route = await session.finish(now: Date())
         self.session = nil
         pumpTask = nil
@@ -124,7 +129,6 @@ final class RecordingController {
             discardJournal(for: session)
             return nil
         }
-        _ = startedAt
 
         do {
             let activity = try repository.save(

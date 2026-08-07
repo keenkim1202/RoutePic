@@ -46,24 +46,36 @@ public final class ActivityRepository {
         offset: Int = 0,
         limit: Int = 50
     ) throws -> [Activity] {
-        var descriptor = FetchDescriptor<Activity>(
-            predicate: #Predicate { $0.deletedAt == nil },
-            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
-        )
-        descriptor.fetchOffset = offset
-        descriptor.fetchLimit = limit
-
-        var results = try context.fetch(descriptor)
-        // Applied after the fetch: `#Predicate` cannot compare against an
-        // optional captured enum, and the alternative is four hand-written
-        // predicates.
+        // The mode goes in the predicate, not into a filter after the fetch:
+        // filtering a page of 50 down to the matching rows returns fewer than
+        // asked for, and `offset` then skips whatever the previous page dropped.
+        var descriptor: FetchDescriptor<Activity>
         if let mode {
-            results = results.filter { $0.modeRaw == mode.rawValue }
+            let raw = mode.rawValue
+            descriptor = FetchDescriptor<Activity>(
+                predicate: #Predicate { $0.deletedAt == nil && $0.modeRaw == raw },
+                sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+            )
+        } else {
+            descriptor = FetchDescriptor<Activity>(
+                predicate: #Predicate { $0.deletedAt == nil },
+                sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+            )
         }
-        if favouritesOnly {
-            results = results.filter { activity in activity.artworks.contains(where: \.isFavorite) }
+
+        guard favouritesOnly else {
+            descriptor.fetchOffset = offset
+            descriptor.fetchLimit = limit
+            return try context.fetch(descriptor)
         }
-        return results
+
+        // Favourites cannot go in the predicate — it is a property of a related
+        // row — so this path fetches the ordered set and filters. Acceptable
+        // because a favourites list is short by definition; revisit if it is not.
+        let all = try context.fetch(descriptor)
+            .filter { activity in activity.artworks.contains(where: \.isFavorite) }
+        guard offset < all.count else { return [] }
+        return Array(all[offset..<min(offset + limit, all.count)])
     }
 
     public func activity(id: UUID) throws -> Activity? {
