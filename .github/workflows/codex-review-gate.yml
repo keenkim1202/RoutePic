@@ -8,6 +8,11 @@ name: codex-review-gate
 # (sha, context) 로 덮어써지므로 마지막 결과만 남는다.
 # 그래서 잡은 성패와 무관하게 항상 0 으로 끝난다.
 #
+# 리뷰가 끝나기 전에 판정하지 않는다. 코덱스는 리뷰를 시작할 때 PR 에 👀 를 달고
+# 끝나면 뗀다. 그래서 잡은 먼저 pending 을 쏘고, 👀 가 사라질 때까지 기다린 뒤에야
+# 성패를 판정한다. 기다리지 않으면 `opened` 시점(코덱스가 아직 시작도 안 한 때)에
+# "미해결 0건"으로 초록이 뜬다.
+#
 # 한계: GitHub Actions 에는 pull_request_review_thread 트리거가 없다.
 # "Resolve conversation" 을 눌러도 이 워크플로는 안 돈다. 푸시·코멘트·리뷰가
 # 새로 오거나 아래 수동 실행을 해야 초록으로 바뀐다.
@@ -60,6 +65,105 @@ jobs:
           # head SHA 는 이벤트 페이로드가 아니라 API 에서 받는다.
           # 수동 실행에는 페이로드가 없고, 페이로드가 있어도 그 사이 푸시가 있었을 수 있다.
           HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUM" --jq '.head.sha')
+          HEAD_TIME=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')
+
+          post_status() {
+            gh api -X POST "repos/$REPO/statuses/$HEAD_SHA" \
+              -f state="$1" \
+              -f context="$CONTEXT" \
+              -f description="$2" \
+              -f target_url="$RUN_URL" --silent
+          }
+
+          hold_pending() {
+            post_status pending "$1"
+            {
+              echo "## 코덱스 리뷰 게이트"
+              echo
+              echo "PR #$PR_NUM · \`${HEAD_SHA:0:7}\` · **pending** — $1"
+              echo
+              echo "리뷰가 끝난 뒤: \`gh workflow run codex-review-gate.yml --repo $REPO -f pr=$PR_NUM\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "$1 (PR #$PR_NUM, $HEAD_SHA)"
+            exit 0
+          }
+
+          # 반응 수, 또는 호출 자체가 실패하면 err.
+          # 실패를 0 으로 뭉개면 "리뷰 중이 아니다" 로 읽혀서 초록이 나간다.
+          # per_page 는 URL 에 붙인다. -f 로 주면 gh 가 요청을 POST 로 바꾼다.
+          reaction_count() {
+            local out
+            if out=$(gh api "repos/$REPO/issues/$PR_NUM/reactions?per_page=100" \
+                  -H "Accept: application/vnd.github.squirrel-girl-preview+json" --paginate \
+                  --jq ".[] | select(.user.login == \"${BOT}[bot]\" and .content == \"$1\") | .id" 2>/dev/null); then
+              printf '%s\n' "$out" | awk 'NF' | wc -l | tr -d ' '
+            else
+              echo err
+            fi
+          }
+
+          # --paginate 는 페이지마다 결과를 따로 뱉는다. length 를 물으면 "0\n0" 같은
+          # 여러 줄이 나와 정수 비교가 깨지므로, 줄을 세서 하나의 수로 만든다.
+          reviewed_this_head() {
+            local out
+            if out=$(gh api "repos/$REPO/pulls/$PR_NUM/reviews?per_page=100" --paginate \
+                  --jq ".[] | select(.user.login == \"${BOT}[bot]\" and .commit_id == \"$HEAD_SHA\") | .id" 2>/dev/null); then
+              printf '%s\n' "$out" | awk 'NF' | wc -l | tr -d ' '
+            else
+              echo err
+            fi
+          }
+
+          # 👍 는 커밋이 아니라 PR 에 붙는다. 리뷰가 끝난 뒤 새 커밋을 밀면 그 따봉이
+          # 그대로 남아 새 head 를 리뷰 없이 통과시킨다. head 커밋 이후에 달린 것만
+          # 이 head 의 증거로 본다.
+          thumbs_after_head() {
+            local out
+            if out=$(gh api "repos/$REPO/issues/$PR_NUM/reactions?per_page=100" \
+                  -H "Accept: application/vnd.github.squirrel-girl-preview+json" --paginate \
+                  --jq ".[] | select(.user.login == \"${BOT}[bot]\" and .content == \"+1\" and .created_at > \"$HEAD_TIME\") | .id" 2>/dev/null); then
+              printf '%s\n' "$out" | awk 'NF' | wc -l | tr -d ' '
+            else
+              echo err
+            fi
+          }
+
+          # 판정 전에 pending 을 쏜다. 기다리는 동안 체크가 초록도 빨강도 아니어야
+          # "아직 리뷰 중" 이 읽힌다.
+          post_status pending "코덱스 리뷰 대기 중"
+
+          # 코덱스는 리뷰를 시작할 때 👀 를 달고 끝나면 뗀다. 다는 데 시간이 걸리므로
+          # 없다고 곧장 판정하면 시작 전에 초록이 뜬다. 최대 2 분 기다린다.
+          for _ in $(seq 1 24); do
+            EYES=$(reaction_count eyes)
+            [ "$EYES" != "0" ] && break
+            sleep 5
+          done
+
+          # 👀 가 붙어 있는 동안은 리뷰 중이다. 최대 20 분.
+          if [ "$EYES" != "0" ]; then
+            post_status pending "코덱스 리뷰 중"
+            for _ in $(seq 1 120); do
+              EYES=$(reaction_count eyes)
+              [ "$EYES" = "0" ] && break
+              sleep 10
+            done
+          fi
+
+          # 아직 👀 가 있거나 반응을 못 읽었으면 리뷰가 안 끝난 것이다. 여기서 스레드를
+          # 세면 이 워크플로가 막으려는 그 거짓 초록이 그대로 나온다.
+          [ "$EYES" = "err" ] && hold_pending "반응 API 를 읽지 못했다 — 리뷰 상태 불명"
+          [ "$EYES" = "0" ] || hold_pending "코덱스 리뷰가 20 분을 넘겼다 — 끝난 뒤 다시 실행"
+
+          # 👀 가 없다고 끝난 것은 아니다. 시작 전일 수도 있다. 이 head 를 본 리뷰나
+          # 👍 가 있어야 끝난 것으로 본다.
+          REVIEWED=$(reviewed_this_head)
+          THUMBS=$(thumbs_after_head)
+          [ "$REVIEWED" = "err" ] && hold_pending "리뷰 목록을 읽지 못했다 — 리뷰 상태 불명"
+          [ "$THUMBS" = "err" ] && hold_pending "반응 API 를 읽지 못했다 — 리뷰 상태 불명"
+          if [ "$REVIEWED" = "0" ] && [ "$THUMBS" = "0" ]; then
+            hold_pending "코덱스 리뷰가 아직 시작되지 않았다"
+          fi
 
           THREADS=$(gh api graphql -f query='
             query($owner:String!, $name:String!, $num:Int!) {
@@ -111,10 +215,6 @@ jobs:
           echo "$DESC (PR #$PR_NUM, $HEAD_SHA)"
           [ "$N" -eq 0 ] || jq -r '.[] | "  \(.path) \(.url)"' <<<"$OPEN"
 
-          gh api -X POST "repos/$REPO/statuses/$HEAD_SHA" \
-            -f state="$STATE" \
-            -f context="$CONTEXT" \
-            -f description="$DESC" \
-            -f target_url="$RUN_URL" --silent
+          post_status "$STATE" "$DESC"
 
           # 잡 자체는 항상 성공으로 끝낸다. 판정은 위 커밋 상태에 있다.
