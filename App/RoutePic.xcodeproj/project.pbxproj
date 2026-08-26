@@ -9,6 +9,8 @@
 		5B5D123080835D78873A9825 /* ShapeKit */ = {isa = PBXBuildFile; productRef = BCA0D00535F055E4A7B26112 /* ShapeKit */; };
 		8BB3D98C09BE5C9580D743A8 /* RouteKit */ = {isa = PBXBuildFile; productRef = 985B29F49EC65B8D85393343 /* RouteKit */; };
 		0B5E28B8013B5A25BC19C617 /* RoutePicStore */ = {isa = PBXBuildFile; productRef = C89F1F8382EB56A19D583BF2 /* RoutePicStore */; };
+		3BBDAACEB5E742769E4D6701 /* GenerationKit */ = {isa = PBXBuildFile; productRef = 8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */; };
+		C7C8B6B1D2F24686AB93B9D2 /* GenerationCoreML */ = {isa = PBXBuildFile; productRef = 8A1149C4851943F98A9EF472 /* GenerationCoreML */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +34,8 @@
 				5B5D123080835D78873A9825 /* ShapeKit */,
 				8BB3D98C09BE5C9580D743A8 /* RouteKit */,
 				0B5E28B8013B5A25BC19C617 /* RoutePicStore */,
+				3BBDAACEB5E742769E4D6701 /* GenerationKit */,
+				C7C8B6B1D2F24686AB93B9D2 /* GenerationCoreML */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +79,8 @@
 				BCA0D00535F055E4A7B26112 /* ShapeKit */,
 				985B29F49EC65B8D85393343 /* RouteKit */,
 				C89F1F8382EB56A19D583BF2 /* RoutePicStore */,
+				8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */,
+				8A1149C4851943F98A9EF472 /* GenerationCoreML */,
 			);
 			productName = RoutePic;
 			productReference = D44F6A826D1E5ADABE38EA2C /* RoutePic.app */;
@@ -103,6 +109,7 @@
 				95C249C3C9CF5A49A585B377 /* XCLocalSwiftPackageReference "../Packages/ShapeKit" */,
 				FE431B3DA463551AA4B492F0 /* XCLocalSwiftPackageReference "../Packages/RouteKit" */,
 				813EF0605A415914BD516A71 /* XCLocalSwiftPackageReference "../Packages/RoutePicStore" */,
+				DA1AD1A6FB7C4DDDAE7489FF /* XCLocalSwiftPackageReference "../Packages/GenerationKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 962BA49E326858E6861EC8D6 /* Products */;
@@ -226,6 +233,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../Packages/RouteKit;
 		};
+		DA1AD1A6FB7C4DDDAE7489FF /* XCLocalSwiftPackageReference "../Packages/GenerationKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/GenerationKit;
+		};
 		813EF0605A415914BD516A71 /* XCLocalSwiftPackageReference "../Packages/RoutePicStore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../Packages/RoutePicStore;
@@ -236,6 +247,8 @@
 		BCA0D00535F055E4A7B26112 /* ShapeKit */ = { isa = XCSwiftPackageProductDependency; productName = ShapeKit; };
 		985B29F49EC65B8D85393343 /* RouteKit */ = { isa = XCSwiftPackageProductDependency; productName = RouteKit; };
 		C89F1F8382EB56A19D583BF2 /* RoutePicStore */ = { isa = XCSwiftPackageProductDependency; productName = RoutePicStore; };
+		8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */ = { isa = XCSwiftPackageProductDependency; productName = GenerationKit; };
+		8A1149C4851943F98A9EF472 /* GenerationCoreML */ = { isa = XCSwiftPackageProductDependency; productName = GenerationCoreML; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A9057D79CD46577194B612F6 /* Project object */;

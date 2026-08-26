@@ -152,8 +152,19 @@ public struct GenerationRequest: Sendable, Equatable {
     public var fingerprint: ShapeFingerprint
     public var stylePreset: String
     public var conditionMode: String
-    public var controlStrength: Double
+    /// Clamped to `usableControlStrength` on the way in.
+    public private(set) var controlStrength: Double
     public var idempotencyKey: String
+
+    /// The window the strength grid left standing.
+    ///
+    /// 42 cells, every combination of seven strengths, two presets and three
+    /// seeds (`OnDevice/SPIKE-RESULTS.md`). Below 1.0 the route is decoration;
+    /// above 1.8 the subject starts dissolving, and by 2.6 it is a mass with
+    /// holes in it. **The metric's own optimum is 2.6 and must not be used** —
+    /// `edgeToRoute` is not monotonic and bottoms out where the picture is
+    /// already dead.
+    public static let usableControlStrength: ClosedRange<Double> = 1.0...1.8
 
     public init(
         contactSheet: Data,
@@ -171,7 +182,10 @@ public struct GenerationRequest: Sendable, Equatable {
         self.fingerprint = fingerprint
         self.stylePreset = stylePreset
         self.conditionMode = conditionMode
-        self.controlStrength = controlStrength
+        self.controlStrength = min(
+            max(controlStrength, Self.usableControlStrength.lowerBound),
+            Self.usableControlStrength.upperBound
+        )
         self.idempotencyKey = idempotencyKey
     }
 }

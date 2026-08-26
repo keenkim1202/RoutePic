@@ -1,3 +1,5 @@
+import GenerationCoreML
+import GenerationKit
 import RouteKit
 import RoutePicStore
 import SwiftData
@@ -85,6 +87,29 @@ final class AppEnvironment {
                 "Saved activities could not be opened, so this session will not be kept. \(error.localizedDescription)"
             return environment
         }
+    }
+
+    /// One generation's worth of state, made fresh each time the sheet opens.
+    ///
+    /// On-device: no provider account, no per-generation cost, and the shape
+    /// never leaves the phone. The ledger exists only because the client takes
+    /// one — an unmetered transport never touches it.
+    func makeGenerationCoordinator() -> GenerationCoordinator {
+        let generator = CoreMLImageGenerator(
+            configuration: .init(
+                resourcesURL: (try? CoreMLImageGenerator.Configuration.defaultResourcesURL())
+                    ?? FileManager.default.temporaryDirectory
+            )
+        )
+        let interpreter = FingerprintInterpreter()
+        return GenerationCoordinator(
+            client: GenerationClient(
+                transport: OnDeviceTransport(generator: generator, interpreter: interpreter),
+                quota: QuotaLedger(allowance: 0, periodStart: Date())
+            ),
+            interpreter: interpreter,
+            repository: repository
+        )
     }
 
     /// Sweeps image files no row points at (`DESIGN.md` §8.1).

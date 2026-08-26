@@ -26,6 +26,15 @@ public protocol OnDeviceImageGenerator: Sendable {
     /// Whether a usable model pack is present and this device can run it.
     var isAvailable: Bool { get async }
 
+    /// The strength this generator actually applies, when it cannot be varied.
+    ///
+    /// Apple's pipeline adds the ControlNet residuals unscaled and exposes no
+    /// conditioning scale, so the Core ML path always runs at the equivalent of
+    /// 1.0 whatever it is asked for. Recording the requested value would put a
+    /// number in `Artwork.controlStrength` that no image was made at.
+    /// `nil` means the requested strength is honoured.
+    var fixedControlStrength: Double? { get }
+
     func generate(
         controlImage: Data,
         prompt: String,
@@ -36,8 +45,12 @@ public protocol OnDeviceImageGenerator: Sendable {
     ) async throws -> Data
 }
 
+extension OnDeviceImageGenerator {
+    public var fixedControlStrength: Double? { nil }
+}
+
 /// Why on-device generation is not usable right now.
-public enum OnDeviceUnavailability: Sendable, Equatable, CustomStringConvertible {
+public enum OnDeviceUnavailability: Error, Sendable, Equatable, CustomStringConvertible {
     case modelNotDownloaded(bytesRequired: Int)
     case deviceUnsupported(reason: String)
     case downloadInProgress(fractionComplete: Double)
@@ -174,13 +187,14 @@ public actor OnDeviceTransport: GenerationTransport {
                 // for a different result.
                 let seed = UInt32(truncatingIfNeeded: request.idempotencyKey.hashValue &+ index)
 
+                let strength = generator.fixedControlStrength ?? request.controlStrength
                 let png = try await generator.generate(
                     controlImage: request.orientationImages[
                         min(subject.3, request.orientationImages.count - 1)
                     ],
                     prompt: "\(subject.2), \(configuration.stylePreset)",
                     negativePrompt: "text, watermark, blurry, low quality",
-                    controlStrength: request.controlStrength,
+                    controlStrength: strength,
                     seed: seed,
                     stepCount: configuration.stepCount
                 )
@@ -195,7 +209,7 @@ public actor OnDeviceTransport: GenerationTransport {
                         subject: subject.0,
                         why: subject.1,
                         seed: Int64(seed),
-                        controlStrength: request.controlStrength,
+                        controlStrength: strength,
                         renderIndex: subject.3,
                         costCents: 0
                     )
