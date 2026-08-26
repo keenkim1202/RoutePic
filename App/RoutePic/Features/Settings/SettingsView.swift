@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage("privacyTrimMeters") private var trimMeters: Int = 200
     @State private var showsDeleteAllConfirmation = false
     @State private var message: String?
+    @State private var isExporting = false
+    @State private var exportURL: URL?
 
     var body: some View {
         NavigationStack {
@@ -45,12 +47,29 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("Export everything") { message = "Export arrives with the next build." }
+                    if isExporting {
+                        HStack {
+                            ProgressView()
+                            Text("Preparing your export…").foregroundStyle(.secondary)
+                        }
+                    } else if let exportURL {
+                        ShareLink(item: exportURL) {
+                            Label("Share your export", systemImage: "square.and.arrow.up")
+                        }
+                    } else {
+                        Button("Export everything") { export() }
+                    }
                     Button("Delete all data", role: .destructive) {
                         showsDeleteAllConfirmation = true
                     }
                 } header: {
                     Text("Your data")
+                } footer: {
+                    Text("""
+                    A zip holding one GPX file per activity, every picture, and \
+                    an index with your notes. Routes are exported whole — the \
+                    privacy trim applies to what you share, not to your own copy.
+                    """)
                 }
 
                 Section {
@@ -64,6 +83,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            // A finished archive is a snapshot. Recording, importing, editing a
+            // note or deleting all happen on other tabs while this view stays
+            // alive, so the link is dropped on the way back in rather than
+            // sharing a zip that no longer matches the collection.
+            .onAppear { exportURL = nil }
             .confirmationDialog(
                 "Delete everything?",
                 isPresented: $showsDeleteAllConfirmation,
@@ -74,7 +98,13 @@ struct SettingsView: View {
             } message: {
                 Text("Every activity, picture and note will be permanently removed from this device. This cannot be undone.")
             }
-            .alert("RoutePic", isPresented: .constant(message != nil)) {
+            .alert(
+                "RoutePic",
+                isPresented: Binding(
+                    get: { message != nil },
+                    set: { if !$0 { message = nil } }
+                )
+            ) {
                 Button("OK") { message = nil }
             } message: {
                 Text(message ?? "")
@@ -82,7 +112,24 @@ struct SettingsView: View {
         }
     }
 
+    private func export() {
+        isExporting = true
+        Task {
+            // A yield so the row can swap to the spinner: the archive is built
+            // on the main actor, and without this the screen freezes with the
+            // button still showing.
+            await Task.yield()
+            do {
+                exportURL = try environment.repository.exportArchive()
+            } catch {
+                message = error.localizedDescription
+            }
+            isExporting = false
+        }
+    }
+
     private func deleteAll() {
+        exportURL = nil
         do {
             try environment.repository.deleteAllData()
             message = "All data deleted."

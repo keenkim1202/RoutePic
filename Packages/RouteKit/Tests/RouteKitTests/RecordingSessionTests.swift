@@ -66,6 +66,23 @@ struct RecordingSessionTests {
         #expect(try await runsAfterSilence(mode: .walk) == 1)    // 90 s threshold
     }
 
+    @Test("The snapshot hands the map the same runs the stored route has")
+    func snapshotCarriesMovingRuns() async throws {
+        let session = RecordingSession(mode: .run)
+        await session.start(now: Sim.epoch)
+        await Sim.feed(Sim.straightWalk(count: 10), into: session)
+        await Sim.feed(Sim.straightWalk(count: 10, startingAt: 200), into: session)
+
+        // Two runs, not one: the live map must show the dropout as a break
+        // rather than drawing a line across it.
+        let snapshot = await session.snapshot()
+        #expect(snapshot.movingRuns.count == 2)
+        #expect(snapshot.movingRuns.allSatisfy { $0.count >= 2 })
+
+        let route = try #require(await session.finish(now: Sim.epoch.addingTimeInterval(300)))
+        #expect(snapshot.movingRuns.count == route.movingRuns.count)
+    }
+
     @Test("Pause splits the route and resume starts a new run")
     func pauseAndResume() async throws {
         let session = RecordingSession(mode: .run)
