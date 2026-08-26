@@ -22,6 +22,13 @@ public actor RecordingSession {
         public var statistics: ActivityStatistics
         public var pointCount: Int
         public var gapCount: Int
+        /// The stretches of real movement, for the live map. Runs rather than
+        /// one list: drawn as a single polyline a dropout becomes a straight
+        /// line across the missing stretch (`DESIGN.md` §5.4).
+        ///
+        /// ponytail: copied whole on every accepted fix. Hand the view a
+        /// decimated copy if a long drive shows up in a profile.
+        public var movingRuns: [[RoutePoint]]
         /// The device stopped moving; `DESIGN.md` §5.5 suggests rather than
         /// forces a pause, because a suggestion the user ignores is recoverable
         /// and an automatic pause they did not want is not.
@@ -176,12 +183,14 @@ public actor RecordingSession {
     }
 
     public func snapshot() -> Snapshot {
-        Snapshot(
+        let route = route()
+        return Snapshot(
             state: state,
             mode: mode,
-            statistics: ActivityStatistics.compute(for: route()),
+            statistics: ActivityStatistics.compute(for: route),
             pointCount: points.count,
             gapCount: segments.count { $0.kind == .gap },
+            movingRuns: route.movingRuns,
             suggestsPause: suggestsPause,
             storageWarning: journal?.writeFailure
         )

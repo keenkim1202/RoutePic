@@ -2,6 +2,7 @@ import RouteKit
 import RoutePicStore
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The personal collection.
 ///
@@ -22,6 +23,9 @@ struct CollectionView: View {
     @State private var favouritesOnly = false
     @State private var activities: [Activity] = []
     @State private var loadError: String?
+    @State private var showsImporter = false
+    @State private var importProgress: String?
+    @State private var importSummary: String?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 3)
 
@@ -35,11 +39,13 @@ struct CollectionView: View {
                         description: Text(loadError)
                     )
                 } else if activities.isEmpty {
-                    ContentUnavailableView(
-                        "Nothing here yet",
-                        systemImage: "figure.walk",
-                        description: Text("Record a walk, run or drive and it will appear here.")
-                    )
+                    ContentUnavailableView {
+                        Label("Nothing here yet", systemImage: "figure.walk")
+                    } description: {
+                        Text("Record a walk, run or drive — or bring in routes you have already recorded elsewhere.")
+                    } actions: {
+                        Button("Import GPX files") { showsImporter = true }
+                    }
                 } else {
                     content
                 }
@@ -49,6 +55,36 @@ struct CollectionView: View {
             .task { reload() }
             .onChange(of: modeFilter) { _, _ in reload() }
             .onChange(of: favouritesOnly) { _, _ in reload() }
+            .fileImporter(
+                isPresented: $showsImporter,
+                allowedContentTypes: [UTType(filenameExtension: "gpx") ?? .xml],
+                allowsMultipleSelection: true
+            ) { result in
+                switch result {
+                case .success(let urls): Task { await runImport(urls) }
+                case .failure(let error): importSummary = error.localizedDescription
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let importProgress {
+                    Text(importProgress)
+                        .font(.footnote)
+                        .padding(12)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(.bottom, 24)
+                }
+            }
+            .alert(
+                "Import",
+                isPresented: Binding(
+                    get: { importSummary != nil },
+                    set: { if !$0 { importSummary = nil } }
+                )
+            ) {
+                Button("OK") { importSummary = nil }
+            } message: {
+                Text(importSummary ?? "")
+            }
         }
     }
 
@@ -108,6 +144,50 @@ struct CollectionView: View {
             }
             .accessibilityLabel("Filter")
         }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button("Import", systemImage: "square.and.arrow.down") { showsImporter = true }
+        }
+    }
+
+    /// Brings in GPX files exported from somewhere else.
+    ///
+    /// One file at a time with a yield between: a Strava export is hundreds of
+    /// files and the repository is main-actor bound, so a tight loop freezes
+    /// the collection until the last one lands.
+    private func runImport(_ urls: [URL]) async {
+        var imported = 0
+        var skipped = 0
+        var failures: [String] = []
+
+        for (index, url) in urls.enumerated() {
+            importProgress = "Importing \(index + 1) of \(urls.count)…"
+            await Task.yield()
+
+            // Files picked outside the app's own container stay unreadable
+            // without this, and the failure is a permission error rather than a
+            // parse error, which reads as a corrupt file to the person.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+            do {
+                try environment.repository.importGPX(at: url)
+                imported += 1
+            } catch ActivityRepository.ImportFailure.alreadyImported {
+                skipped += 1
+            } catch {
+                failures.append("\(url.lastPathComponent): \(error)")
+            }
+        }
+
+        importProgress = nil
+        reload()
+
+        var summary = "Imported \(imported) of \(urls.count)."
+        if skipped > 0 { summary += " \(skipped) were already in your collection." }
+        if let first = failures.first {
+            summary += " \(failures.count) could not be read — \(first)"
+        }
+        importSummary = summary
     }
 
     private func reload() {

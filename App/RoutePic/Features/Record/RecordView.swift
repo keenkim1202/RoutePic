@@ -208,10 +208,20 @@ struct PauseSuggestionBanner: View {
 struct LiveRouteMap: View {
     let snapshot: RecordingSession.Snapshot?
 
+    /// Starts on the user and stays wherever they pan it. Following the route
+    /// would fight anyone who moves the map to look ahead.
+    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+
     var body: some View {
         ZStack {
-            Map()
-                .mapStyle(.standard(pointsOfInterest: .excludingAll))
+            Map(position: $camera) {
+                UserAnnotation()
+                ForEach(Array(runs.enumerated()), id: \.offset) { _, run in
+                    MapPolyline(coordinates: run)
+                        .stroke(.tint, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .mapStyle(.standard(pointsOfInterest: .excludingAll))
             if let snapshot, snapshot.pointCount < 2 {
                 Text("Waiting for a GPS fix…")
                     .font(.footnote)
@@ -219,7 +229,26 @@ struct LiveRouteMap: View {
                     .background(.thinMaterial, in: Capsule())
             }
         }
-        .accessibilityLabel("Map showing the route recorded so far")
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var runs: [[CLLocationCoordinate2D]] {
+        (snapshot?.movingRuns ?? []).map { run in
+            run.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        }
+    }
+
+    /// VoiceOver gets the numbers, not the picture — a polyline is nothing to
+    /// read out (`DESIGN.md` §9, T-7).
+    private var accessibilityDescription: String {
+        guard let snapshot, snapshot.pointCount >= 2 else {
+            return "Map. Waiting for a GPS fix."
+        }
+        let gaps = snapshot.gapCount == 0
+            ? ""
+            : " \(snapshot.gapCount) stretches are missing from the recording."
+        return "Map showing the route recorded so far."
+            + " \(CardFormatter.distance(snapshot.statistics.distanceMeters)) so far.\(gaps)"
     }
 }
 

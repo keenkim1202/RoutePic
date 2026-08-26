@@ -240,5 +240,6 @@ public final class ActivityRepository {
         for name in (try? artworkStore.existingNames()) ?? [] {
             try? artworkStore.delete(named: name)
         }
+        discardExportArchives()
     }
 }
