@@ -40,9 +40,9 @@ struct SettingsView: View {
                     Text("Where your data is")
                 } footer: {
                     Text("""
-                    RoutePic keeps everything locally. When picture generation \
-                    arrives it will send only the normalised shape of a route — \
-                    never the coordinates — and the server will not keep it.
+                    RoutePic keeps everything locally. Pictures are drawn on \
+                    this device, so not even the shape of a route is sent \
+                    anywhere — there is no server in the picture path at all.
                     """)
                 }
 
@@ -74,7 +74,7 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Version", value: "0.9")
-                    LabeledContent("Picture generation", value: "Not enabled yet")
+                    LabeledContent("Picture generation", value: "On this device")
                 } footer: {
                     Text("""
                     Recording, your collection, notes and sharing work without \

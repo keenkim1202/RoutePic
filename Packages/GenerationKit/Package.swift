@@ -11,12 +11,28 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "GenerationKit", targets: ["GenerationKit"]),
+        // Separate so the pure logic above keeps building and testing without
+        // Apple's Stable Diffusion package, which is large and only the app
+        // target actually needs.
+        .library(name: "GenerationCoreML", targets: ["GenerationCoreML"]),
     ],
     dependencies: [
         .package(path: "../ShapeKit"),
+        .package(
+            url: "https://github.com/apple/ml-stable-diffusion.git",
+            from: "1.1.0"
+        ),
     ],
     targets: [
         .target(name: "GenerationKit", dependencies: ["ShapeKit"]),
+        .target(
+            name: "GenerationCoreML",
+            dependencies: [
+                "GenerationKit",
+                .product(name: "StableDiffusion", package: "ml-stable-diffusion"),
+            ]
+        ),
         .testTarget(name: "GenerationKitTests", dependencies: ["GenerationKit"]),
+        .testTarget(name: "GenerationCoreMLTests", dependencies: ["GenerationCoreML"]),
     ]
 )
