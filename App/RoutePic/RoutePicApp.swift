@@ -37,6 +37,12 @@ final class AppEnvironment {
     let artworkStore: any ArtworkStore
     let recorder: RecordingController
 
+    /// Where the Core ML pack lives, and the one thing that puts it there.
+    /// Both the installer and each generator read the same directory, so
+    /// holding one here is bookkeeping rather than shared state.
+    let modelPackURL: URL
+    let modelPackInstaller: ModelPackInstaller
+
     /// A storage problem the user needs to know about (`DESIGN.md` §14.1).
     var startupWarning: String?
 
@@ -47,6 +53,10 @@ final class AppEnvironment {
     ) {
         self.container = container
         self.artworkStore = artworkStore
+        self.modelPackURL = (try? CoreMLImageGenerator.Configuration.defaultResourcesURL())
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("StableDiffusionPack", isDirectory: true)
+        self.modelPackInstaller = ModelPackInstaller(destination: modelPackURL)
         let context = ModelContext(container)
         self.repository = ActivityRepository(context: context, artworkStore: artworkStore)
         self.recorder = RecordingController(
@@ -95,12 +105,7 @@ final class AppEnvironment {
     /// never leaves the phone. The ledger exists only because the client takes
     /// one — an unmetered transport never touches it.
     func makeGenerationCoordinator() -> GenerationCoordinator {
-        let generator = CoreMLImageGenerator(
-            configuration: .init(
-                resourcesURL: (try? CoreMLImageGenerator.Configuration.defaultResourcesURL())
-                    ?? FileManager.default.temporaryDirectory
-            )
-        )
+        let generator = CoreMLImageGenerator(configuration: .init(resourcesURL: modelPackURL))
         let interpreter = FingerprintInterpreter()
         return GenerationCoordinator(
             client: GenerationClient(
@@ -114,6 +119,11 @@ final class AppEnvironment {
 
     /// Sweeps image files no row points at (`DESIGN.md` §8.1).
     func runMaintenance() {
+        // Nothing resumes a model-pack copy across a launch, so whatever is
+        // staged now is from a session that was killed. Left there it reports
+        // itself as an install in progress on every screen, for ever.
+        Task { await modelPackInstaller.discardStaged() }
+
         guard let store = artworkStore as? FileArtworkStore else { return }
         try? OrphanCleaner.sweep(context: repository.context, store: store)
     }

@@ -23,8 +23,10 @@ import ShapeKit
 /// about whether the output reads as a recognisable animal, which is why SP-1
 /// has to compare it against the server path rather than assume either wins.
 public protocol OnDeviceImageGenerator: Sendable {
-    /// Whether a usable model pack is present and this device can run it.
-    var isAvailable: Bool { get async }
+    /// Why a picture cannot be made right now, or `nil` when one can. A reason
+    /// rather than a flag: "no model pack yet" and "this device cannot run one"
+    /// lead to different actions, and a bool collapses them into a dead end.
+    func unavailability() async -> OnDeviceUnavailability?
 
     /// The strength this generator actually applies, when it cannot be varied.
     ///
@@ -47,25 +49,38 @@ public protocol OnDeviceImageGenerator: Sendable {
 
 extension OnDeviceImageGenerator {
     public var fixedControlStrength: Double? { nil }
+
+    public var isAvailable: Bool {
+        get async { await unavailability() == nil }
+    }
 }
 
 /// Why on-device generation is not usable right now.
-public enum OnDeviceUnavailability: Error, Sendable, Equatable, CustomStringConvertible {
-    case modelNotDownloaded(bytesRequired: Int)
+///
+/// Nothing here is a download: there is no server to download from, which is
+/// the same choice that keeps routes on the phone. The copy names the only
+/// recovery that exists rather than an action the app cannot offer.
+public enum OnDeviceUnavailability: Error, Sendable, Equatable, CustomStringConvertible, LocalizedError {
+    case modelNotInstalled(bytesRequired: Int)
     case deviceUnsupported(reason: String)
-    case downloadInProgress(fractionComplete: Double)
+    case installInProgress(fractionComplete: Double)
 
     public var description: String {
         switch self {
-        case .modelNotDownloaded(let bytes):
+        case .modelNotInstalled(let bytes):
             let gigabytes = Double(bytes) / 1_000_000_000
-            return String(format: "Picture generation needs a %.1f GB one-time download.", gigabytes)
+            return String(
+                format: "Drawing needs a %.1f GB model. Add it in Settings under Picture model.",
+                gigabytes
+            )
         case .deviceUnsupported(let reason):
             return "This device cannot generate pictures on its own. \(reason)"
-        case .downloadInProgress(let fraction):
-            return "Downloading the picture model — \(Int(fraction * 100))%."
+        case .installInProgress(let fraction):
+            return "Adding the picture model — \(Int(fraction * 100))%."
         }
     }
+
+    public var errorDescription: String? { description }
 }
 
 /// Adapts an on-device generator to the same transport the server path uses.
@@ -118,6 +133,10 @@ public actor OnDeviceTransport: GenerationTransport {
         self.generator = generator
         self.interpreter = interpreter
         self.configuration = configuration
+    }
+
+    public func readiness() async -> String? {
+        await generator.unavailability()?.description
     }
 
     public func submit(_ request: GenerationRequest) async throws -> GenerationJob {

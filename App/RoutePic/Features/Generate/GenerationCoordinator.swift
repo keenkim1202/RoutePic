@@ -44,7 +44,7 @@ final class GenerationCoordinator {
             ) {
             case .available:
                 break
-            case .routeUnsuitable(let reason):
+            case .routeUnsuitable(let reason), .notReady(let reason):
                 phase = .unavailable(reason)
                 return
             case .quotaExhausted:

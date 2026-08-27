@@ -29,18 +29,18 @@ private func request(key: String = "device-1") -> GenerationRequest {
 
 /// Returns a fixed PNG-ish blob, or throws.
 private actor StubGenerator: OnDeviceImageGenerator {
-    var available: Bool
+    var unavailable: OnDeviceUnavailability?
     var failure: (any Error)?
     private(set) var callCount = 0
     private(set) var lastPrompt = ""
     private(set) var seeds: [UInt32] = []
 
-    init(available: Bool = true, failure: (any Error)? = nil) {
-        self.available = available
+    init(unavailable: OnDeviceUnavailability? = nil, failure: (any Error)? = nil) {
+        self.unavailable = unavailable
         self.failure = failure
     }
 
-    var isAvailable: Bool { available }
+    func unavailability() async -> OnDeviceUnavailability? { unavailable }
 
     func generate(
         controlImage: Data, prompt: String, negativePrompt: String,
@@ -222,11 +222,11 @@ struct OnDeviceTransportTests {
     @Test("Unavailability messages are written for a person, not a log")
     func unavailabilityCopy() {
         #expect(
-            OnDeviceUnavailability.modelNotDownloaded(bytesRequired: 1_800_000_000)
+            OnDeviceUnavailability.modelNotInstalled(bytesRequired: 1_800_000_000)
                 .description.contains("1.8 GB")
         )
         #expect(
-            OnDeviceUnavailability.downloadInProgress(fractionComplete: 0.42)
+            OnDeviceUnavailability.installInProgress(fractionComplete: 0.42)
                 .description.contains("42%")
         )
     }
@@ -290,6 +290,50 @@ struct UnmeteredClientTests {
             for: fingerprint(), lengthMeters: 5_000, isOnline: false
         )
         #expect(availability.canGenerate)
+    }
+
+    /// Without this the first anyone hears of a missing model pack is a
+    /// generation they waited on and watched fail.
+    @Test("A missing model pack is reported before a generation is started")
+    func availabilityReportsAMissingPack() async {
+        let (generation, _) = client(
+            makeTransport(generator: StubGenerator(
+                unavailable: .modelNotInstalled(bytesRequired: 1_800_000_000)
+            )),
+            allowance: 0
+        )
+        let availability = await generation.availability(for: fingerprint(), lengthMeters: 5_000)
+
+        #expect(!availability.canGenerate)
+        guard case .notReady(let reason) = availability else {
+            Issue.record("expected .notReady, got \(availability)")
+            return
+        }
+        #expect(reason.contains("1.8 GB"))
+    }
+
+    /// A download does not fix a straight line, so the route check has to run
+    /// first or someone installs two gigabytes for nothing.
+    @Test("An unsuitable route is refused before a missing pack is mentioned")
+    func routeChecksComeFirst() async {
+        let (generation, _) = client(
+            makeTransport(generator: StubGenerator(
+                unavailable: .modelNotInstalled(bytesRequired: 1_800_000_000)
+            )),
+            allowance: 0
+        )
+        let straight = ShapeFingerprint(
+            closureRatio: 0.9, aspectRatio: 900, tortuosity: 1.02,
+            meanAbsoluteTurn: 0.001, turnVariance: 0, turnSkewness: 0,
+            occupancyFillRatio: 0.01, protrusionCount: 0,
+            selfIntersectionCount: 0, convexRatio: nil
+        )
+        guard case .routeUnsuitable = await generation.availability(
+            for: straight, lengthMeters: 5_000
+        ) else {
+            Issue.record("a straight line should be refused for its shape, not for the pack")
+            return
+        }
     }
 
     @Test("An unsuitable route is still refused on-device")

@@ -61,16 +61,49 @@ needs a real device (`PLAN.md` T-2).
 `coremltools` warns that recent torch versions are untested. Pin torch to 2.7.x
 if conversion fails.
 
-## Shipping the pack
+## What the converter writes
 
-Roughly 1–2 GB with 6-bit palettisation. Do **not** put it in the app bundle:
+`--bundle-resources-for-swift-cli` decides the layout, and the pipeline reads it
+back. `ModelPack` is the one place that names it:
 
-- On-demand resources or a first-run download, so install size stays small
-- Gate on device memory and report progress — `OnDeviceUnavailability` carries
-  `.modelNotDownloaded`, `.downloadInProgress`, `.deviceUnsupported` for exactly
-  this, and each has user-facing copy
-- Keep the local card (§4.4) working while the pack is absent. Generation is
-  additive; the app must not appear broken to someone who declined a 2 GB download
+```
+Resources/
+  TextEncoder.mlmodelc        VAEDecoder.mlmodelc
+  ControlledUnet.mlmodelc     ← or ControlledUnetChunk1/2.mlmodelc
+  vocab.json                  merges.txt
+  controlnet/
+    lllyasviel_sd-controlnet-scribble.mlmodelc
+```
+
+Three things catch people out. The UNet is **`ControlledUnet`**, not `Unet` — a
+plain one has no ControlNet inputs and fails at load. The ControlNet file is
+named after the model id with `/` replaced by `_`, so it is never called
+`ControlNet.mlmodelc`; `ModelPack` reads whatever is in `controlnet/` rather
+than guessing. And the ControlNet has to be a **scribble** one: the app draws a
+centreline and records `conditionMode: "scribble"`, so a Canny or pose pack
+would load happily and stamp that claim on a picture conditioned on something
+else. `ModelPack` refuses it rather than let the metadata lie.
+
+## Getting the pack onto a device
+
+Roughly 1–2 GB with 6-bit palettisation, so it is not in the app bundle. There
+is also no server to download it from — that is the same choice that keeps
+routes on the phone. So the pack is copied in from a folder:
+
+1. Convert on a Mac with the command above
+2. Put the `Resources` folder in Files or iCloud Drive
+3. **Settings → Picture model → Add a picture model**, and pick it
+
+`ModelPackInstaller` checks the layout before copying a byte, stages the copy
+beside the destination and swaps it in at the end, so an interrupted install
+never leaves a half-pack that reports itself usable. The installed pack is
+marked excluded from backup — it is reproducible from the conversion above, and
+two gigabytes in every iCloud backup buys nothing. Swapping the folder for an
+`https` download later touches only `install`.
+
+The local card (§4.4) keeps working while the pack is absent, and
+`GenerationTransport.readiness()` says so on the detail screen rather than
+letting someone wait on a generation that cannot start.
 
 ## Where it plugs in
 
