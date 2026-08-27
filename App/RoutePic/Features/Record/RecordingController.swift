@@ -22,6 +22,23 @@ final class RecordingController {
     }
 
     private(set) var phase: Phase = .idle
+
+    /// Why a recording ended without the person asking. Cleared once shown.
+    var interruption: String?
+
+    /// The location stream ended by itself. Read after `start` finishes too:
+    /// it can end between the source starting and the phase becoming
+    /// `.running`, and a run that is already over must not be shown as live.
+    private var streamEnded = false
+    /// Whether the interruption is already being dealt with. The pump and the
+    /// tail of `start` can both reach it, and `finish()` holds the session
+    /// across awaits — so twice means the same route saved twice.
+    private var handlingInterruption = false
+    /// Fixes that arrived before the session was recording. The first update
+    /// both answers `start` and carries a position, so the pump can reach
+    /// `handle` first — and `ingest` refuses an idle session, dropping exactly
+    /// the beginning of the route.
+    private var pendingFixes: [LocationFix] = []
     private(set) var snapshot: RecordingSession.Snapshot?
     private(set) var mode: RecordingMode = .run
 
@@ -51,8 +68,14 @@ final class RecordingController {
     }
 
     func start(mode: RecordingMode) async {
-        guard !isRecording else { return }
+        // `.starting` is not `isRecording`, so a second tap during the
+        // permission prompt would build a whole second session: a new journal,
+        // a `pumpTask` orphaning the first, and a second `updates()`.
+        guard !isRecording, phase != .starting else { return }
         self.mode = mode
+        streamEnded = false
+        handlingInterruption = false
+        pendingFixes = []
         phase = .starting
 
         let id = UUID()
@@ -72,6 +95,11 @@ final class RecordingController {
                 guard let self else { return }
                 await self.handle(fix)
             }
+            // The stream ending on its own means the source gave up — a
+            // permission revoked mid-run, or a session the system tore down.
+            // Cancellation is the ordinary path and is not that.
+            guard !Task.isCancelled else { return }
+            await self?.locationStopped()
         }
 
         do {
@@ -85,12 +113,57 @@ final class RecordingController {
         }
 
         await session.start(now: Date())
+        // Drained before the phase opens, and drained until empty: a fix
+        // arriving mid-drain joins the back of the queue instead of overtaking
+        // it. Out of order, the filter chain rejects the older ones and the
+        // beginning of the route goes with them.
+        while !pendingFixes.isEmpty {
+            await session.ingest(pendingFixes.removeFirst(), now: Date())
+        }
         phase = .running
         snapshot = await session.snapshot()
+
+        // The stream can finish while the lines above are still running, and
+        // the pump's own report is discarded because the phase was `.starting`.
+        if streamEnded { await reportInterruption() }
+    }
+
+    /// The source stopped delivering while a recording was still going.
+    ///
+    /// Saved rather than failed — the route so far is real. What must not
+    /// happen is the screen going on showing a run nothing is recording.
+    private func locationStopped() async {
+        streamEnded = true
+        await reportInterruption()
+    }
+
+    private func reportInterruption() async {
+        guard isRecording, !handlingInterruption else { return }
+        handlingInterruption = true
+
+        let saved = await finish()
+        // A failed save already puts its own message on screen, and that one
+        // says the recording can be recovered — which this must not overwrite.
+        if case .failed = phase { return }
+        interruption = saved != nil
+            ? """
+                Location updates stopped, so this recording was saved where it \
+                got to. Check that RoutePic still has permission and that \
+                Precise Location is on.
+                """
+            : """
+                Location updates stopped before anything was recorded, so there \
+                was nothing to save. Check that RoutePic still has permission \
+                and that Precise Location is on.
+                """
     }
 
     private func handle(_ fix: LocationFix) async {
         guard let session else { return }
+        guard phase != .starting else {
+            pendingFixes.append(fix)
+            return
+        }
         await session.ingest(fix, now: Date())
         snapshot = await session.snapshot()
     }
@@ -147,6 +220,7 @@ final class RecordingController {
     }
 
     func discard() async {
+        pendingFixes = []
         pumpTask?.cancel()
         await locationSource.stop()
         if let session { discardJournal(for: session) }
