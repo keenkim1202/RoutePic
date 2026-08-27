@@ -11,6 +11,11 @@ public protocol GenerationTransport: Sendable {
     /// generations for no reason and make the free tier look broken.
     var isMetered: Bool { get }
 
+    /// Why this transport cannot run at all, whatever the route is; `nil` when
+    /// it can. Without it the first anyone hears of a missing model pack is a
+    /// generation they waited on and watched fail.
+    func readiness() async -> String?
+
     func submit(_ request: GenerationRequest) async throws -> GenerationJob
     func poll(jobID: String) async throws -> GenerationJob
     func cancel(jobID: String) async throws
@@ -21,6 +26,9 @@ extension GenerationTransport {
     /// Metered by default: a transport that costs nothing has to say so
     /// explicitly, so the safe assumption is the one that protects the budget.
     public var isMetered: Bool { true }
+
+    /// A transport with nothing to install is always ready.
+    public func readiness() async -> String? { nil }
 }
 
 /// What the app should do with a route right now.
@@ -29,6 +37,8 @@ public enum GenerationAvailability: Sendable, Equatable {
     /// `DESIGN.md` §4.4 — a near-straight or very short route is blocked before
     /// any money is spent, because there is nothing to interpret.
     case routeUnsuitable(reason: String)
+    /// The transport itself is not usable yet — on-device, a missing model pack.
+    case notReady(reason: String)
     case quotaExhausted
     case offline
 
@@ -124,6 +134,12 @@ public actor GenerationClient {
             return .routeUnsuitable(
                 reason: "This route is too short to make a picture from."
             )
+        }
+        // Route suitability comes first: it is free to check and no download
+        // fixes it, so someone whose route cannot be drawn is not sent off to
+        // install two gigabytes before finding that out.
+        if let reason = await transport.readiness() {
+            return .notReady(reason: reason)
         }
         // An unmetered transport has no allowance to exhaust, and works
         // offline — the two remaining reasons to refuse do not apply.

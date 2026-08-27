@@ -47,10 +47,12 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
     }
 
     private let configuration: Configuration
+    private let installer: ModelPackInstaller
     private var pipeline: StableDiffusionPipeline?
 
     public init(configuration: Configuration) {
         self.configuration = configuration
+        self.installer = ModelPackInstaller(destination: configuration.resourcesURL)
     }
 
     /// Apple's pipeline adds the residuals unscaled and offers no conditioning
@@ -59,35 +61,29 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
     /// which is why `SPIKE-RESULTS.md` ran its grid outside this package.
     public nonisolated var fixedControlStrength: Double? { 1.0 }
 
-    public var isAvailable: Bool {
-        get async { (try? unavailability()) == nil }
+    /// Why generation cannot run, or `nil` when it can.
+    public func unavailability() async -> OnDeviceUnavailability? {
+        if case .failure(let reason) = await resolvedPack() { return reason }
+        return nil
     }
 
-    /// Why generation cannot run, or `nil` when it can.
-    public func unavailability() throws -> OnDeviceUnavailability? {
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(
-            atPath: configuration.resourcesURL.path, isDirectory: &isDirectory
-        )
-        guard exists, isDirectory.boolValue else {
-            return .modelNotDownloaded(bytesRequired: configuration.packBytes)
+    /// The pack on disk, or the reason there is none to use.
+    func resolvedPack() async -> Result<ModelPack, OnDeviceUnavailability> {
+        // An interrupted install answers first: the destination is still empty
+        // at that point, and "not downloaded" over a folder already holding a
+        // gigabyte points at the wrong action.
+        if let fraction = await installer.stagedFraction() {
+            return .failure(.installInProgress(fractionComplete: fraction))
         }
-
-        // A directory that exists but holds no compiled model is a download that
-        // stopped halfway. Saying "downloading" is closer to the truth than
-        // "unsupported device", and it points at the action that fixes it.
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            atPath: configuration.resourcesURL.path
-        )) ?? []
-        guard contents.contains(where: { $0.hasSuffix(".mlmodelc") }) else {
-            return .downloadInProgress(fractionComplete: 0)
+        do {
+            return .success(try ModelPack.inspect(at: configuration.resourcesURL))
+        } catch ModelPackProblem.notADirectory, ModelPackProblem.empty {
+            return .failure(.modelNotInstalled(bytesRequired: configuration.packBytes))
+        } catch let problem as ModelPackProblem {
+            return .failure(.deviceUnsupported(reason: problem.description))
+        } catch {
+            return .failure(.deviceUnsupported(reason: error.localizedDescription))
         }
-        guard contents.contains(where: { $0.hasPrefix("ControlNet") }) else {
-            return .deviceUnsupported(
-                reason: "The downloaded pack has no ControlNet model, so a route cannot steer it."
-            )
-        }
-        return nil
     }
 
     public func generate(
@@ -98,12 +94,12 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
         seed: UInt32,
         stepCount: Int
     ) async throws -> Data {
-        if let reason = try unavailability() { throw reason }
+        let pack = try await resolvedPack().get()
         guard let control = Self.decode(controlImage) else {
             throw OnDeviceError.generationFailed("the control image could not be read")
         }
 
-        let pipeline = try loadPipeline()
+        let pipeline = try loadPipeline(pack)
         var request = StableDiffusionPipeline.Configuration(prompt: prompt)
         request.negativePrompt = negativePrompt
         request.stepCount = stepCount
@@ -136,14 +132,16 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
         pipeline = nil
     }
 
-    private func loadPipeline() throws -> StableDiffusionPipeline {
+    private func loadPipeline(_ pack: ModelPack) throws -> StableDiffusionPipeline {
         if let pipeline { return pipeline }
 
         let modelConfiguration = MLModelConfiguration()
         modelConfiguration.computeUnits = configuration.computeUnits
+        // The name comes off disk. `--bundle-resources-for-swift-cli` derives it
+        // from the model id, so no converted pack ever contains "ControlNet".
         let created = try StableDiffusionPipeline(
             resourcesAt: configuration.resourcesURL,
-            controlNet: ["ControlNet"],
+            controlNet: Array(pack.controlNetNames.prefix(1)),
             configuration: modelConfiguration,
             reduceMemory: configuration.reduceMemory
         )
