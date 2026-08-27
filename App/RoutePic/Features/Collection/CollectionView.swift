@@ -26,8 +26,20 @@ struct CollectionView: View {
     @State private var showsImporter = false
     @State private var importProgress: String?
     @State private var importSummary: String?
+    @State private var monthFilter: MonthKey?
+    @State private var monthSummaries: [MonthSummary] = []
+    @State private var hasMore = false
+    @State private var isLoadingMore = false
+
+    /// One screen's worth and then some. The month picker narrows the query,
+    /// but a single month can still hold more than a page — someone logging
+    /// every drive does.
+    private static let pageSize = 200
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 3)
+
+    /// Section boundaries only — the repository's newest-first order is kept.
+    private var months: [ActivityMonth] { activities.groupedByMonth() }
 
     var body: some View {
         NavigationStack {
@@ -55,6 +67,7 @@ struct CollectionView: View {
             .task { reload() }
             .onChange(of: modeFilter) { _, _ in reload() }
             .onChange(of: favouritesOnly) { _, _ in reload() }
+            .onChange(of: monthFilter) { _, _ in reload() }
             .fileImporter(
                 isPresented: $showsImporter,
                 allowedContentTypes: [UTType(filenameExtension: "gpx") ?? .xml],
@@ -92,24 +105,42 @@ struct CollectionView: View {
     private var content: some View {
         ScrollView {
             if layout == .grid {
-                LazyVGrid(columns: columns, spacing: 3) {
-                    ForEach(activities) { activity in
-                        NavigationLink(value: activity.id) {
-                            ActivityTile(activity: activity)
+                LazyVGrid(columns: columns, spacing: 3, pinnedViews: [.sectionHeaders]) {
+                    ForEach(months) { month in
+                        Section {
+                            ForEach(month.activities) { activity in
+                                NavigationLink(value: activity.id) {
+                                    ActivityTile(activity: activity)
+                                }
+                                .buttonStyle(.plain)
+                                .onAppear { loadMoreIfLast(activity) }
+                            }
+                        } header: {
+                            monthHeader(month)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             } else {
-                LazyVStack(spacing: 24) {
-                    ForEach(activities) { activity in
-                        NavigationLink(value: activity.id) {
-                            ActivityFeedCard(activity: activity)
+                LazyVStack(spacing: 24, pinnedViews: [.sectionHeaders]) {
+                    ForEach(months) { month in
+                        Section {
+                            ForEach(month.activities) { activity in
+                                NavigationLink(value: activity.id) {
+                                    ActivityFeedCard(activity: activity)
+                                }
+                                .buttonStyle(.plain)
+                                .onAppear { loadMoreIfLast(activity) }
+                            }
+                        } header: {
+                            monthHeader(month)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
+            }
+
+            if isLoadingMore {
+                ProgressView().padding()
             }
         }
         .navigationDestination(for: UUID.self) { id in
@@ -117,6 +148,49 @@ struct CollectionView: View {
                 ActivityDetailView(activity: activity, onChange: reload)
             }
         }
+    }
+
+    /// Pages in the next block when the last loaded row comes on screen.
+    ///
+    /// A month can hold more than a page, and picking one is exactly when
+    /// someone means to see all of it — a cap there is a dead end with no
+    /// control to escape it.
+    private func loadMoreIfLast(_ activity: Activity) {
+        guard hasMore, !isLoadingMore, activity.id == activities.last?.id else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let next = try environment.repository.activities(
+                mode: modeFilter, favouritesOnly: favouritesOnly,
+                inMonth: monthFilter, offset: activities.count, limit: Self.pageSize
+            )
+            activities += next
+            hasMore = next.count == Self.pageSize
+        } catch {
+            hasMore = false
+            loadError = error.localizedDescription
+        }
+    }
+
+    /// The count comes from the summary, not the loaded rows: a month holding
+    /// more than a page would otherwise show 200 and climb as it pages.
+    private func monthHeader(_ month: ActivityMonth) -> some View {
+        HStack {
+            Text(Self.monthTitle(month.id))
+                .font(.headline)
+            Spacer()
+            Text("\(monthSummaries.first { $0.id == month.id }?.count ?? month.activities.count)")
+                .font(.subheadline).monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, layout == .grid ? 12 : 0)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
+    }
+
+    static func monthTitle(_ month: MonthKey) -> String {
+        month.displayDate.formatted(.dateTime.year().month(.wide))
     }
 
     @ToolbarContentBuilder
@@ -143,6 +217,25 @@ struct CollectionView: View {
                 Image(systemName: "line.3.horizontal.decrease.circle")
             }
             .accessibilityLabel("Filter")
+        }
+        // A month narrows the query rather than scrolling the loaded page: the
+        // page holds 200 rows and a bulk import is thousands, so a scroll
+        // target could not reach the months this menu exists for.
+        if monthSummaries.count > 1 {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Month", selection: $monthFilter) {
+                        Text("All months").tag(MonthKey?.none)
+                        ForEach(monthSummaries) { month in
+                            Text("\(Self.monthTitle(month.id))  ·  \(month.count)")
+                                .tag(MonthKey?.some(month.id))
+                        }
+                    }
+                } label: {
+                    Image(systemName: monthFilter == nil ? "calendar" : "calendar.badge.clock")
+                }
+                .accessibilityLabel("Month")
+            }
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button("Import", systemImage: "square.and.arrow.down") { showsImporter = true }
@@ -192,9 +285,19 @@ struct CollectionView: View {
 
     private func reload() {
         do {
-            activities = try environment.repository.activities(
-                mode: modeFilter, favouritesOnly: favouritesOnly, limit: 200
+            monthSummaries = try environment.repository.activityMonths(
+                mode: modeFilter, favouritesOnly: favouritesOnly
             )
+            // A month that no longer matches the mode or favourite filter would
+            // otherwise leave the screen empty with no way back.
+            if let monthFilter, !monthSummaries.contains(where: { $0.id == monthFilter }) {
+                self.monthFilter = nil
+            }
+            activities = try environment.repository.activities(
+                mode: modeFilter, favouritesOnly: favouritesOnly,
+                inMonth: monthFilter, limit: Self.pageSize
+            )
+            hasMore = activities.count == Self.pageSize
             loadError = nil
         } catch {
             loadError = error.localizedDescription

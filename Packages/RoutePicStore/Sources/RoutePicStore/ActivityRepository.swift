@@ -43,39 +43,101 @@ public final class ActivityRepository {
     public func activities(
         mode: RecordingMode? = nil,
         favouritesOnly: Bool = false,
+        inMonth month: MonthKey? = nil,
+        fallbackTimeZone: TimeZone = .current,
         offset: Int = 0,
         limit: Int = 50
     ) throws -> [Activity] {
-        // The mode goes in the predicate, not into a filter after the fetch:
-        // filtering a page of 50 down to the matching rows returns fewer than
-        // asked for, and `offset` then skips whatever the previous page dropped.
-        var descriptor: FetchDescriptor<Activity>
-        if let mode {
-            let raw = mode.rawValue
-            descriptor = FetchDescriptor<Activity>(
-                predicate: #Predicate { $0.deletedAt == nil && $0.modeRaw == raw },
-                sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
-            )
-        } else {
-            descriptor = FetchDescriptor<Activity>(
-                predicate: #Predicate { $0.deletedAt == nil },
-                sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
-            )
-        }
+        var descriptor = Self.descriptor(mode: mode, month: month)
 
-        guard favouritesOnly else {
+        guard favouritesOnly || month != nil else {
             descriptor.fetchOffset = offset
             descriptor.fetchLimit = limit
             return try context.fetch(descriptor)
         }
 
-        // Favourites cannot go in the predicate — it is a property of a related
-        // row — so this path fetches the ordered set and filters. Acceptable
-        // because a favourites list is short by definition; revisit if it is not.
-        let all = try context.fetch(descriptor)
-            .filter { activity in activity.artworks.contains(where: \.isFavorite) }
+        // Two things the store cannot decide: a favourite lives on a related
+        // row, and a month depends on the zone each activity was recorded in,
+        // which SQL cannot apply per row. Both slice the ordered set instead,
+        // which also keeps `offset` honest — paging a predicate whose rows this
+        // then drops would skip whatever the previous page dropped.
+        let all = try context.fetch(descriptor).filter { activity in
+            if favouritesOnly, !activity.artworks.contains(where: \.isFavorite) { return false }
+            if let month, activity.monthKey(fallback: fallbackTimeZone) != month { return false }
+            return true
+        }
         guard offset < all.count else { return [] }
         return Array(all[offset..<min(offset + limit, all.count)])
+    }
+
+    /// Every month the collection has something in, newest first.
+    ///
+    /// Covers the whole collection, not the page on screen — a month list built
+    /// from the first 200 rows cannot reach last spring, which is its point.
+    /// Only the two columns a month needs are read, so that costs no route blobs.
+    public func activityMonths(
+        mode: RecordingMode? = nil,
+        favouritesOnly: Bool = false,
+        fallbackTimeZone: TimeZone = .current
+    ) throws -> [MonthSummary] {
+        var descriptor = Self.descriptor(mode: mode, month: nil)
+        // A favourite is a property of a related row, so that path needs the
+        // artworks and cannot be narrowed to two columns.
+        if !favouritesOnly {
+            descriptor.propertiesToFetch = [\.startedAt, \.timeZoneID]
+        }
+
+        var counts: [MonthKey: Int] = [:]
+        for activity in try context.fetch(descriptor) {
+            if favouritesOnly, !activity.artworks.contains(where: \.isFavorite) { continue }
+            counts[activity.monthKey(fallback: fallbackTimeZone), default: 0] += 1
+        }
+        // By key, not by the order the rows arrived: near a boundary an instant
+        // order can meet August before an older September.
+        return counts.keys.sorted(by: >).map { MonthSummary(id: $0, count: counts[$0] ?? 0) }
+    }
+
+    private static func descriptor(
+        mode: RecordingMode?, month: MonthKey?
+    ) -> FetchDescriptor<Activity> {
+        // The mode goes in the predicate so a page of 50 comes back as 50.
+        // Two predicates rather than one holding an optional: a `#Predicate`
+        // becomes a store query, and an unwrap inside one has no translation.
+        // A day either side of the UTC month: the widest zone offsets are
+        // −12 and +14 hours, so no zone's version of this month falls outside.
+        // The exact boundary is settled per row by the caller.
+        let window = month.map(Self.utcWindow)
+        let from = window?.start ?? .distantPast
+        let until = window?.end ?? .distantFuture
+        let order = [SortDescriptor(\Activity.startedAt, order: .reverse)]
+
+        guard let raw = mode?.rawValue else {
+            return FetchDescriptor<Activity>(
+                predicate: #Predicate {
+                    $0.deletedAt == nil && $0.startedAt >= from && $0.startedAt < until
+                },
+                sortBy: order
+            )
+        }
+        return FetchDescriptor<Activity>(
+            predicate: #Predicate {
+                $0.deletedAt == nil && $0.modeRaw == raw
+                    && $0.startedAt >= from && $0.startedAt < until
+            },
+            sortBy: order
+        )
+    }
+
+    static func utcWindow(for month: MonthKey) -> (start: Date, end: Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let slack: TimeInterval = 86_400
+        guard let start = calendar.date(
+            from: DateComponents(year: month.year, month: month.month, day: 1)
+        ), let interval = calendar.dateInterval(of: .month, for: start) else {
+            return (.distantPast, .distantFuture)
+        }
+        return (interval.start.addingTimeInterval(-slack), interval.end.addingTimeInterval(slack))
     }
 
     public func activity(id: UUID) throws -> Activity? {

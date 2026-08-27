@@ -87,21 +87,24 @@ GPS 폴리라인  →  단순화·정규화     →   무엇처럼 보이나(VLM
 서버 경로와 온디바이스 경로는 같은 transport seam 뒤에 있고, 온디바이스는 과금 대상이 아니라
 쿼터 예약·확정·환불을 통째로 건너뛴다.
 
-**둘 다 아직 이 체크아웃에서 동작하지 않는다.** `GenerationKit`에 있는 것은 잡 상태 머신·쿼터
-원장·폴링 정책이고, 실제 생성기는 없다 — `OnDeviceImageGenerator`는 프로토콜뿐이고 유일한 구현이
-테스트의 스텁이다. `Package.swift`에
-[`ml-stable-diffusion`](https://github.com/apple/ml-stable-diffusion) 의존이 없고, 앱 타깃은
-`GenerationKit`을 링크하지도 않는다. 스파이크는 저장소 밖에서 Apple의 CLI로 돌렸다. 붙이는 일은
-계획의 P1이다.
+**온디바이스 경로는 붙었고, 서버 경로는 없다.** `CoreMLImageGenerator`가
+[`ml-stable-diffusion`](https://github.com/apple/ml-stable-diffusion) 위에서 돌고 앱 타깃이
+`GenerationKit`을 링크한다. 서버 팔은 여전히 `GenerationTransport`의 HTTP 구현체가 없다 —
+온디바이스로 충분한지 판정(P2)이 나기 전에 만들면 낭비다.
 
-Swift 71파일, 테스트 243개 통과 (ShapeKit 115 · RouteKit 68 · Generation 43 · Store 17).
+**다만 이 체크아웃에서 그림이 나온 적은 없다.** 변환된 Core ML 팩은 1~2 GB라 저장소에도 앱
+번들에도 없고, 받아올 서버도 없다 — 경로가 기기를 떠나지 않는다는 것과 같은 선택이다. Mac에서
+변환해 Files로 넣고 설정에서 고르면 된다 (`OnDevice/README.md`). **팩 없이 파이프라인이 실제로
+그림을 만든 적은 없다.**
+
+Swift 76파일, 테스트 298개 통과 (ShapeKit 115 · RouteKit 75 · Generation 72 · Store 36).
 
 ## 상태
 
-작업 중이다. `ShapeKit`·`RouteKit`·`RoutePicStore`는 앱에서 실제로 돌고, `GenerationKit`은
-정책만 있고 생성기가 없다(위 참조). 스파이크 2회가 끝났으나 제품 가설(SP-1)은 검증되지 않았다 —
-평가자 없이는 원리적으로 불가능한 부분이 남아 있다. 설계서에서 `[가설]`과 `[미검증]`이 붙은 항목이
-남은 리스크다.
+작업 중이다. `ShapeKit`·`RouteKit`·`RoutePicStore`·`GenerationKit`이 모두 앱에서 돌지만,
+생성은 모델 팩이 있어야 실행된다(위 참조). 스파이크 2회가 끝났으나 제품 가설(SP-1)은 검증되지
+않았다 — 평가자 없이는 원리적으로 불가능한 부분이 남아 있다. 설계서에서 `[가설]`과 `[미검증]`이
+붙은 항목이 남은 리스크다.
 
 ## 문서
 
