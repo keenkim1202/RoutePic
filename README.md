@@ -97,7 +97,7 @@ GPS 폴리라인  →  단순화·정규화     →   무엇처럼 보이나(VLM
 변환해 Files로 넣고 설정에서 고르면 된다 (`OnDevice/README.md`). **팩 없이 파이프라인이 실제로
 그림을 만든 적은 없다.**
 
-Swift 76파일, 테스트 298개 통과 (ShapeKit 115 · RouteKit 75 · Generation 72 · Store 36).
+Swift 91파일, 테스트 322개 통과 (ShapeKit 115 · RouteKit 81 · Generation 84 · Store 42).
 
 ## 상태
 
