@@ -25,6 +25,14 @@ struct RecordView: View {
                 }
             }
             .navigationTitle("Record")
+            .alert("Recording stopped", isPresented: Binding(
+                get: { recorder.interruption != nil },
+                set: { if !$0 { recorder.interruption = nil } }
+            )) {
+                Button("OK") { recorder.interruption = nil }
+            } message: {
+                Text(recorder.interruption ?? "")
+            }
             .task {
                 recorder.scanForRecovery()
                 showsRecoverySheet = !recorder.recoveryCandidates.isEmpty
@@ -74,12 +82,15 @@ struct RecordView: View {
             Button {
                 Task { await recorder.start(mode: selectedMode) }
             } label: {
-                Text("Start")
+                Text(recorder.phase == .starting ? "Starting…" : "Start")
                     .font(.title2.weight(.semibold))
                     .frame(width: 168, height: 168)
                     .background(Circle().fill(Color.accentColor))
                     .foregroundStyle(.white)
             }
+            // A second tap while the permission prompt is open starts a
+            // second session on top of the first.
+            .disabled(recorder.phase == .starting)
             .accessibilityLabel("Start recording a \(selectedMode.title)")
 
             Spacer()
