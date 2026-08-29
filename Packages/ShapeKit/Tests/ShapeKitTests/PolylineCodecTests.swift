@@ -96,4 +96,45 @@ struct PolylineCodecTests {
             #expect(abs(a.longitude - b.longitude) < 1e-6)
         }
     }
+
+    /// A damaged blob can claim any count. Converting the claim traps above
+    /// `Int.max`, and a merely enormous one fills arrays until the process
+    /// dies — and the collection decodes these while somebody scrolls.
+    @Test("A count larger than the bytes behind it is refused, not allocated")
+    func absurdCountIsRefused() {
+        var blob = Data("RPL1".utf8)
+        blob.append(0)
+        // 0xFF… varint: the largest UInt64 the format can express.
+        blob.append(contentsOf: [UInt8](repeating: 0xFF, count: 9) + [0x01])
+
+        #expect(throws: PolylineCodec.DecodingError.truncated(field: "count")) {
+            try PolylineCodec.decode(blob)
+        }
+    }
+
+    @Test("A plausible but unbacked count is refused too")
+    func unbackedCountIsRefused() {
+        var blob = Data("RPL1".utf8)
+        blob.append(0)
+        blob.append(100)  // one varint byte, claiming 100 points, nothing behind them
+
+        #expect(throws: PolylineCodec.DecodingError.truncated(field: "count")) {
+            try PolylineCodec.decode(blob)
+        }
+    }
+
+    /// The count guard did not cover this one: accuracy is a plain varint, and
+    /// narrowing it traps the same way. The collection decodes these.
+    @Test("An accuracy varint beyond Int64 is refused, not converted")
+    func absurdAccuracyIsRefused() {
+        var blob = Data("RPL1".utf8)
+        blob.append(PolylineCodec.Flags.horizontalAccuracy.rawValue)
+        blob.append(1)                                  // one point
+        blob.append(contentsOf: [0, 0])                 // its latitude and longitude
+        blob.append(contentsOf: [UInt8](repeating: 0xFF, count: 9) + [0x01])
+
+        #expect(throws: PolylineCodec.DecodingError.varintOverflow) {
+            try PolylineCodec.decode(blob)
+        }
+    }
 }

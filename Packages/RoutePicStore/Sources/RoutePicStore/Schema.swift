@@ -114,15 +114,71 @@ public final class Activity {
     /// hide it.
     public func route() throws -> Route {
         let points = try PolylineCodec.decode(routeBlob)
-        let segments = (try? JSONDecoder().decode([RouteSegment].self, from: segmentsBlob))
-            ?? [RouteSegment(startIndex: 0, endIndex: points.count, kind: .moving)]
+        guard let segments = try? JSONDecoder().decode([RouteSegment].self, from: segmentsBlob) else {
+            // Neither guess is available. One long moving run draws the
+            // straight line across a dropout this field exists to prevent;
+            // rebuilding from the stored timestamps invents a gap wherever
+            // somebody sat still long enough for their fixes to be filtered
+            // out — `RecordingSession.ingest` measures against the last fix it
+            // could position from, and `routeBlob` does not keep those.
+            //
+            // A route is a claim about where a person went, so a lost
+            // segmentation is refused the same way lost coordinates are.
+            throw StoredRouteFailure.segmentationLost
+        }
         return Route(points: points, segments: segments)
     }
 
-    public var gapCount: Int {
-        let segments = (try? JSONDecoder().decode([RouteSegment].self, from: segmentsBlob)) ?? []
-        return segments.count { $0.kind == .gap }
+    /// Everything a screen asks about a stored route, from one decode.
+    ///
+    /// Both answers need the polyline: a gap count taken from the segments
+    /// alone would describe a route the app is refusing to draw. Asked
+    /// separately they cost a full decode each, and the detail screen asks
+    /// four times in one pass.
+    public struct RouteSummary: Equatable, Sendable {
+        /// Refusing to draw a route only tells somebody something if they are
+        /// told — otherwise a corrupt recording is an unexplained blank tile,
+        /// which is the hiding `route()` exists to refuse.
+        public let isReadable: Bool
+        /// Zero when the route cannot be read: the drawing is already refused,
+        /// and a count would be a second claim on top of a broken one.
+        public let gapCount: Int
     }
+
+    public func routeSummary() -> RouteSummary {
+        guard let route = try? route() else {
+            return RouteSummary(isReadable: false, gapCount: 0)
+        }
+        return RouteSummary(
+            isReadable: true,
+            gapCount: route.segments.count { $0.kind == .gap }
+        )
+    }
+
+    public var isRouteReadable: Bool { routeSummary().isReadable }
+
+    public var gapCount: Int { routeSummary().gapCount }
+}
+
+/// Why a stored route could not be handed back.
+public enum StoredRouteFailure: Error, Equatable, CustomStringConvertible, LocalizedError {
+    /// `segmentsBlob` did not decode. The coordinates survived, but which
+    /// stretches were walked and which were dropouts did not.
+    case segmentationLost
+
+    public var description: String {
+        switch self {
+        case .segmentationLost:
+            """
+            This recording's structure could not be read. Its route is not \
+            drawn rather than guessing which stretches were missing.
+            """
+        }
+    }
+
+    // Without this the alerts that show `localizedDescription` print
+    // Foundation's opaque wording instead of the sentence above.
+    public var errorDescription: String? { description }
 }
 
 /// One generated image (or locally rendered card) for an activity.

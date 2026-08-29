@@ -36,6 +36,28 @@ enum StoreFixtures {
         )
     }
 
+    /// Two runs with a real hole in the clock between them. `route(gapAfter:)`
+    /// marks a gap segment without leaving one in the timestamps, which is no
+    /// use for testing a rebuild from those timestamps.
+    static func routeWithTimeGap(perRun: Int = 10, hole: TimeInterval = 1_200) -> Route {
+        let metresPerDegree = ENUProjection.earthRadius * .pi / 180
+        var points: [RoutePoint] = []
+        for index in 0..<(perRun * 2) {
+            let elapsed = Double(index) * 5 + (index >= perRun ? hole : 0)
+            points.append(
+                RoutePoint(
+                    latitude: 37.5665 + Double(index) * 10 / metresPerDegree,
+                    longitude: 126.9780,
+                    altitude: 30,
+                    timestamp: epoch.addingTimeInterval(elapsed),
+                    horizontalAccuracy: 8,
+                    verticalAccuracy: 5
+                )
+            )
+        }
+        return Route(points: points, splittingGapsLongerThan: 90)
+    }
+
     static func pngData(_ side: Int = 32) -> Data {
         let context = CGContext(
             data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
@@ -304,6 +326,100 @@ struct ActivityRepositoryTests {
         // previous picture there describes something not on screen.
         #expect(activity.routeDescription.contains("Route drawing"))
         #expect(!activity.routeDescription.contains(artwork.subject))
+    }
+
+    /// Both guesses lie. One long run draws a straight line across a dropout;
+    /// rebuilding from stored timestamps invents a gap wherever somebody sat
+    /// still long enough to be filtered out. A route is a claim about where a
+    /// person went, so neither is offered.
+    @Test("A corrupt segment blob refuses the route rather than guessing")
+    func corruptSegmentsRefuseTheRoute() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.routeWithTimeGap(), mode: .walk,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(1_500)
+        )
+        #expect(activity.gapCount == 1)
+
+        activity.segmentsBlob = Data([0xFF, 0xFE, 0xFD])
+        try repository.context.save()
+
+        #expect(throws: StoredRouteFailure.segmentationLost) { try activity.route() }
+        // Not a second claim on top of a broken one.
+        #expect(activity.gapCount == 0)
+    }
+
+    /// Coordinates cannot be reconstructed from anything, so this one has to be
+    /// loud: showing an empty route would hide the loss.
+    @Test("A corrupt route blob throws rather than showing nothing")
+    func corruptRouteBlobThrows() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+
+        activity.routeBlob = Data([0xFF])
+        try repository.context.save()
+
+        #expect(throws: (any Error).self) { try activity.route() }
+    }
+
+    /// One damaged recording must not cost somebody the backup of every
+    /// healthy one — the same reason a missing image is skipped, not fatal.
+    @Test("An unreadable activity is skipped, not the whole export")
+    func exportSurvivesAnUnreadableActivity() throws {
+        let repository = try makeRepository()
+        for _ in 0..<2 {
+            _ = try repository.save(
+                route: StoreFixtures.route(), mode: .run,
+                startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+            )
+        }
+        let broken = try repository.save(
+            route: StoreFixtures.route(), mode: .walk,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        broken.segmentsBlob = Data([0xFF])
+        try repository.context.save()
+        #expect(!broken.isRouteReadable)
+
+        let archive = try repository.exportArchive(now: StoreFixtures.epoch)
+        defer { try? FileManager.default.removeItem(at: archive) }
+        #expect(FileManager.default.fileExists(atPath: archive.path))
+    }
+
+    /// A lost segmentation does not make the pictures unreadable, and
+    /// "Export everything" promises them.
+    @Test("An unreadable route still exports its pictures")
+    func exportKeepsArtworkOfAnUnreadableActivity() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .walk,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        let artwork = try attach(to: activity, using: repository)
+        activity.segmentsBlob = Data([0xFF])
+        try repository.context.save()
+        #expect(!activity.isRouteReadable)
+
+        let archive = try repository.exportArchive(now: StoreFixtures.epoch)
+        defer { try? FileManager.default.removeItem(at: archive) }
+
+        let unzipped = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: unzipped) }
+        try FileManager.default.createDirectory(at: unzipped, withIntermediateDirectories: true)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-q", archive.path, "-d", unzipped.path]
+        try process.run()
+        process.waitUntilExit()
+
+        let names = try FileManager.default
+            .subpathsOfDirectory(atPath: unzipped.path)
+            .filter { $0.hasSuffix(".png") }
+        #expect(names.contains { $0.contains(artwork.id.uuidString) })
     }
 
     private func attach(to activity: Activity, using repository: ActivityRepository) throws -> Artwork {

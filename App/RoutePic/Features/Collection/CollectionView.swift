@@ -311,7 +311,14 @@ struct ActivityTile: View {
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        ZStack {
+        // Once per evaluation. Reading it twice decodes the whole polyline
+        // twice for every visible card, on the scrolling path.
+        //
+        // ponytail: still one decode per card per update. Cache it on the row
+        // if a long collection ever feels slow.
+        let readable = activity.isRouteReadable
+
+        return ZStack {
             if let artwork = activity.artworks.first(where: \.isSelected) ?? activity.artworks.first,
                let data = try? environment.artworkStore.data(named: artwork.thumbnailFileName),
                let image = PlatformImage.from(data) {
@@ -320,10 +327,24 @@ struct ActivityTile: View {
                 RouteThumbnail(activity: activity)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            // The thumbnail carries its own marker, but a damaged activity
+            // with artwork never shows one — the picture is drawn instead.
+            if !readable {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
+                    .padding(4)
+            }
+        }
         .frame(minHeight: 0)
         .aspectRatio(1, contentMode: .fill)
         .clipped()
-        .accessibilityLabel(activity.accessibilityDescription)
+        .accessibilityLabel(
+            readable
+                ? activity.accessibilityDescription
+                : "\(activity.accessibilityDescription) This recording could not be read."
+        )
     }
 }
 

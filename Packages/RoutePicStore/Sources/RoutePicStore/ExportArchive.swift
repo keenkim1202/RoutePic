@@ -38,14 +38,9 @@ extension ActivityRepository {
             // overwrite the first while the index still pointed both at it.
             let name = "\(activity.startedAt.formatted(Self.exportFile))-\(activity.mode.rawValue)"
                 + "-\(activity.id.uuidString.prefix(8))"
-            let route = try activity.route()
-            try GPXDocument.write(route)
-                .write(
-                    to: staging.appendingPathComponent("\(name).gpx"),
-                    atomically: true,
-                    encoding: .utf8
-                )
-
+            // Pictures first, and regardless of the route. A recording whose
+            // segmentation was lost still has perfectly readable images, and
+            // "Export everything" promises them.
             for artwork in activity.artworks {
                 // A missing image file is not a reason to abandon the export —
                 // the person still wants the other several hundred activities.
@@ -55,14 +50,29 @@ extension ActivityRepository {
                 )
             }
 
-            index.append([
-                "file": "\(name).gpx",
+            var entry: [String: String] = [
                 "mode": activity.modeRaw,
                 "startedAt": activity.startedAt.formatted(.iso8601),
                 "distanceMeters": String(Int(activity.distanceMeters)),
                 "note": activity.note ?? "",
                 "placeName": activity.placeName ?? "",
-            ])
+            ]
+
+            // An unreadable recording costs its GPX, not the export. The index
+            // records the omission so it is visible rather than silent.
+            if let route = try? activity.route() {
+                try GPXDocument.write(route)
+                    .write(
+                        to: staging.appendingPathComponent("\(name).gpx"),
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                entry["file"] = "\(name).gpx"
+            } else {
+                entry["file"] = ""
+                entry["omitted"] = "this recording's route could not be read"
+            }
+            index.append(entry)
         }
 
         try JSONSerialization
