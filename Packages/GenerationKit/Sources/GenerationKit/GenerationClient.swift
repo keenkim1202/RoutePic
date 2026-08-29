@@ -73,7 +73,7 @@ public actor GenerationClient {
         }
     }
 
-    public enum Failure: Error, Equatable, CustomStringConvertible {
+    public enum Failure: DescribedError, Equatable {
         case quota(QuotaLedger.Failure)
         case routeUnsuitable(String)
         case jobFailed(String)

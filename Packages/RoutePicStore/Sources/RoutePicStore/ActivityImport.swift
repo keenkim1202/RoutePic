@@ -5,7 +5,7 @@ import SwiftData
 
 extension ActivityRepository {
 
-    public enum ImportFailure: Error, Equatable, CustomStringConvertible {
+    public enum ImportFailure: DescribedError, Equatable {
         case noTimestamps
         case partiallyTimed
         case malformedCoordinates

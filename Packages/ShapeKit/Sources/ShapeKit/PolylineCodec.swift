@@ -41,7 +41,7 @@ public enum PolylineCodec {
         public static let horizontalAccuracy = Flags(rawValue: 1 << 2)
     }
 
-    public enum DecodingError: Error, Equatable, CustomStringConvertible {
+    public enum DecodingError: DescribedError, Equatable {
         case badMagic
         case truncated(field: String)
         case varintOverflow

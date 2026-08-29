@@ -87,7 +87,7 @@ public struct ContactSheetRenderer: Sendable {
         public static let bare = Style(showsLabels: false, showsSeparators: false)
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case contextCreationFailed
         case imageCreationFailed
 

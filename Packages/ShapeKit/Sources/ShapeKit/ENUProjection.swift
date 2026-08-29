@@ -16,7 +16,7 @@ public struct ENUProjection: Sendable {
     /// meaningful. No real activity happens here; refusing beats rendering garbage.
     public static let maxAbsoluteLatitude = 85.0
 
-    public enum Failure: Error, Equatable, CustomStringConvertible {
+    public enum Failure: DescribedError, Equatable {
         case noPoints
         case polarLatitude(Double)
 

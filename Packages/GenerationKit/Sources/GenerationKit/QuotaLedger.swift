@@ -1,4 +1,5 @@
 import Foundation
+import ShapeKit
 
 /// Tracks how many generations the user has left.
 ///
@@ -21,7 +22,7 @@ public actor QuotaLedger {
         public var isExhausted: Bool { remaining <= 0 }
     }
 
-    public enum Failure: Error, Equatable, CustomStringConvertible {
+    public enum Failure: DescribedError, Equatable {
         case exhausted(remaining: Int)
         case unknownReservation(String)
 

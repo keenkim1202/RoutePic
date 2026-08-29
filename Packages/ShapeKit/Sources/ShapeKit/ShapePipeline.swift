@@ -37,7 +37,7 @@ public struct ShapePipeline: Sendable {
         public static let driving = Configuration(resampleSpacing: 25)
     }
 
-    public enum Failure: Error, Equatable, CustomStringConvertible {
+    public enum Failure: DescribedError, Equatable {
         case notEnoughPoints
         case projection(ENUProjection.Failure)
 

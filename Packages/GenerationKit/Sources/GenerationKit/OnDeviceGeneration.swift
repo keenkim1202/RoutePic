@@ -279,7 +279,7 @@ public protocol ShapeInterpreter: Sendable {
     ) async throws -> ShapeInterpretation
 }
 
-public enum OnDeviceError: Error, Equatable, CustomStringConvertible {
+public enum OnDeviceError: DescribedError, Equatable {
     case unknownJob(String)
     case notALocalFile(URL)
     case generationFailed(String)
