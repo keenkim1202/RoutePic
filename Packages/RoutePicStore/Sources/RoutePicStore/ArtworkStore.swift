@@ -17,6 +17,9 @@ public protocol ArtworkStore: Sendable {
     func data(named name: String) throws -> Data
     func delete(named name: String) throws
     func existingNames() throws -> Set<String>
+    /// What the pictures cost on disk (`PLAN.md` M7.8) — a number the person
+    /// can see, rather than a cap they cannot.
+    func totalBytes() throws -> Int64
 }
 
 /// Files on disk, written atomically.
@@ -89,6 +92,18 @@ public struct FileArtworkStore: ArtworkStore {
         )
     }
 
+    public func totalBytes() throws -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey]
+        let contents = try fileManager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: Array(keys)
+        )
+        return contents.reduce(0) { total, url in
+            let values = try? url.resourceValues(forKeys: keys)
+            guard values?.isRegularFile == true else { return total }
+            return total + Int64(values?.fileSize ?? 0)
+        }
+    }
+
     /// Files whose modification date is older than `age`. Used by
     /// `OrphanCleaner` so an image being written right now is never swept.
     public func namesOlderThan(_ age: TimeInterval, now: Date = Date()) throws -> Set<String> {
@@ -138,6 +153,10 @@ public final class InMemoryArtworkStore: ArtworkStore, @unchecked Sendable {
     public func existingNames() throws -> Set<String> {
         lock.withLock { Set(files.keys) }
     }
+
+    public func totalBytes() throws -> Int64 {
+        lock.withLock { files.values.reduce(0) { $0 + Int64($1.count) } }
+    }
 }
 
 public enum ThumbnailRenderer {
@@ -145,6 +164,15 @@ public enum ThumbnailRenderer {
     /// Feed thumbnails are square and small; `DESIGN.md` §9 shows a 3-column
     /// grid, so full 1024² images would be decoded at ~10× the needed size.
     public static let size = 320
+
+    /// Scales encoded image bytes down to a feed thumbnail. Bytes rather than
+    /// a `CGImage` because that is what every caller has.
+    public static func thumbnail(fromEncoded data: Data, side: Int = size) throws -> Data {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { throw CocoaError(.fileReadCorruptFile) }
+        return try thumbnail(from: image, side: side)
+    }
 
     public static func thumbnail(from image: CGImage, side: Int = size) throws -> Data {
         guard

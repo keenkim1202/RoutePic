@@ -239,11 +239,51 @@ struct ActivityRepositoryTests {
         #expect(try repository.artworkStore.existingNames().isEmpty)
     }
 
+    /// `ThumbnailRenderer` existed and nothing outside the tests called it:
+    /// the one caller handed the full 1024² image in as the thumbnail, so every
+    /// picture was stored twice at full size and the grid decoded all of it.
+    @Test("The stored thumbnail is a thumbnail, not a second copy")
+    func thumbnailIsScaledDown() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        let full = StoreFixtures.pngData(1024)
+        let artwork = try repository.attachArtwork(
+            to: activity, imageData: full,
+            subject: "s", why: "w", stylePreset: "flat-vector", provider: "test",
+            modelID: "m", conditionMode: "centreline", controlStrength: 1,
+            renderIndex: 0, seed: 1, costCents: 0
+        )
+
+        let stored = try repository.artworkStore.data(named: artwork.thumbnailFileName)
+        #expect(stored.count < full.count)
+        #expect(try repository.artworkStore.data(named: artwork.imageFileName).count == full.count)
+    }
+
+    /// Losing the picture over a thumbnail would be the worse trade.
+    @Test("Bytes that are not an image still attach")
+    func undecodableImageStillAttaches() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        let artwork = try repository.attachArtwork(
+            to: activity, imageData: Data([0x00, 0x01, 0x02]),
+            subject: "s", why: "w", stylePreset: "flat-vector", provider: "test",
+            modelID: "m", conditionMode: "centreline", controlStrength: 1,
+            renderIndex: 0, seed: 1, costCents: 0
+        )
+
+        #expect(try repository.artworkStore.data(named: artwork.thumbnailFileName).count == 3)
+    }
+
     private func attach(to activity: Activity, using repository: ActivityRepository) throws -> Artwork {
         try repository.attachArtwork(
             to: activity,
             imageData: StoreFixtures.pngData(64),
-            thumbnailData: StoreFixtures.pngData(32),
             subject: "웅크린 여우",
             why: "닫힌 곡선에 뾰족한 돌출",
             stylePreset: "flat-vector",
@@ -322,7 +362,6 @@ struct ArtworkStoreTests {
         )
         _ = try repository.attachArtwork(
             to: activity, imageData: StoreFixtures.pngData(64),
-            thumbnailData: StoreFixtures.pngData(32),
             subject: "s", why: "w", stylePreset: "p", provider: "t", modelID: "m",
             conditionMode: "c", controlStrength: 0.6, renderIndex: 0, seed: 1, costCents: 0
         )
@@ -364,7 +403,6 @@ struct ArtworkStoreTests {
         )
         let artwork = try repository.attachArtwork(
             to: activity, imageData: StoreFixtures.pngData(64),
-            thumbnailData: StoreFixtures.pngData(32),
             subject: "s", why: "w", stylePreset: "p", provider: "t", modelID: "m",
             conditionMode: "c", controlStrength: 0.6, renderIndex: 0, seed: 1, costCents: 0
         )

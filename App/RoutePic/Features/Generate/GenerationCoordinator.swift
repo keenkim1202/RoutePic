@@ -108,7 +108,6 @@ final class GenerationCoordinator {
         try repository.attachArtwork(
             to: activity,
             imageData: data,
-            thumbnailData: data,
             subject: candidate.subject,
             why: candidate.why,
             stylePreset: "flat-vector",
