@@ -30,6 +30,8 @@
 	<!-- DESIGN.md §5.1: When In Use plus the background mode is sufficient for a
 	     session the user starts in the foreground. "Always" is not requested;
 	     it would raise the permission bar for a capability the app never uses. -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>RoutePic reads the routes of walks, runs and rides you have already recorded, so your collection is not empty on the day you install it. Nothing is written back to Health, and no route leaves this device.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RoutePic records the shape of your walk, run or drive so it can turn the route into a picture. Recording only happens while a session you started is running.</string>
 	<key>UIBackgroundModes</key>

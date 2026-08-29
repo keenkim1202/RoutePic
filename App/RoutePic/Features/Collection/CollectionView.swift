@@ -26,6 +26,10 @@ struct CollectionView: View {
     @State private var showsImporter = false
     @State private var importProgress: String?
     @State private var importSummary: String?
+    /// One flag for both sources. They write the same progress and summary, so
+    /// two at once means whichever finishes first clears the other's progress
+    /// and whichever finishes last overwrites its result.
+    @State private var isImporting = false
     @State private var monthFilter: MonthKey?
     @State private var monthSummaries: [MonthSummary] = []
     @State private var hasMore = false
@@ -56,7 +60,15 @@ struct CollectionView: View {
                     } description: {
                         Text("Record a walk, run or drive — or bring in routes you have already recorded elsewhere.")
                     } actions: {
-                        Button("Import GPX files") { showsImporter = true }
+                        VStack(spacing: 8) {
+                            if HealthWorkoutReader.isAvailable {
+                                Button("Bring in your Health workouts") { importHealth() }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(isImporting)
+                            }
+                            Button("Import GPX files") { showsImporter = true }
+                                .disabled(isImporting)
+                        }
                     }
                 } else {
                     content
@@ -238,7 +250,16 @@ struct CollectionView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button("Import", systemImage: "square.and.arrow.down") { showsImporter = true }
+            Menu {
+                if HealthWorkoutReader.isAvailable {
+                    Button("From Health", systemImage: "heart") { importHealth() }
+                }
+                Button("From GPX files", systemImage: "doc") { showsImporter = true }
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .accessibilityLabel("Import")
+            .disabled(isImporting)
         }
     }
 
@@ -248,6 +269,8 @@ struct CollectionView: View {
     /// files and the repository is main-actor bound, so a tight loop freezes
     /// the collection until the last one lands.
     private func runImport(_ urls: [URL]) async {
+        isImporting = true
+        defer { isImporting = false }
         var imported = 0
         var skipped = 0
         var failures: [String] = []
@@ -281,6 +304,69 @@ struct CollectionView: View {
             summary += " \(failures.count) could not be read — \(first)"
         }
         importSummary = summary
+    }
+
+    /// Health already holds years of this. `PLAN.md` P0.1 — the app is empty
+    /// on the day it is installed, and asking somebody to walk for half an hour
+    /// before anything appears is a poor first impression.
+    private func importHealth() {
+        isImporting = true
+        Task {
+            defer { isImporting = false }
+            let reader = HealthWorkoutReader()
+            do {
+                try await reader.requestAuthorization()
+                importProgress = "Reading Health…"
+
+                let candidates = try await reader.workouts()
+                // Workouts with a route, which is not the same as workouts of
+                // a kind we support: a treadmill run passes the type check and
+                // has nothing to draw. Counting candidates would report
+                // "imported 0 of 47" for a history that never had a route.
+                var found = 0
+                var imported = 0
+                var skipped = 0
+                var failures: [String] = []
+
+                for (index, workout) in candidates.enumerated() {
+                    importProgress = "Checking \(index + 1) of \(candidates.count)…"
+                    // One route at a time, so only one is ever in memory. The
+                    // repository is main-actor bound, so the yield keeps the
+                    // collection alive between workouts.
+                    await Task.yield()
+                    do {
+                        let points = try await reader.points(for: workout)
+                        guard !points.isEmpty else { continue }
+                        found += 1
+                        try environment.repository.importRoute(
+                            points,
+                            mode: workout.mode,
+                            startedAt: workout.startedAt,
+                            endedAt: workout.endedAt,
+                            timeZoneID: workout.timeZoneID
+                        )
+                        imported += 1
+                    } catch ActivityRepository.ImportFailure.alreadyImported {
+                        skipped += 1
+                    } catch {
+                        // This workout's problem, not the history's. A route
+                        // deleted mid-import used to end the whole read and
+                        // leave everything older unexamined.
+                        failures.append(error.localizedDescription)
+                    }
+                }
+
+                importProgress = nil
+                reload()
+                importSummary = ImportReport.summary(
+                    found: found, imported: imported,
+                    skipped: skipped, failures: failures
+                )
+            } catch {
+                importProgress = nil
+                importSummary = error.localizedDescription
+            }
+        }
     }
 
     private func reload() {
