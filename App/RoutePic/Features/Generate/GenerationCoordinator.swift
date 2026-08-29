@@ -112,7 +112,10 @@ final class GenerationCoordinator {
             why: candidate.why,
             stylePreset: "flat-vector",
             provider: "on-device",
-            modelID: "stable-diffusion-1-5+scribble",
+            // Whatever actually ran. A pack holding a fine-tune installs and
+            // runs like stock, so naming one here would put a guess in the
+            // artwork's provenance.
+            modelID: candidate.modelID,
             conditionMode: "scribble",
             controlStrength: candidate.controlStrength,
             renderIndex: candidate.renderIndex,

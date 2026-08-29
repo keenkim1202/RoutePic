@@ -114,10 +114,16 @@ public struct GeneratedCandidate: Sendable, Equatable, Codable {
     public var controlStrength: Double
     public var renderIndex: Int
     public var costCents: Int
+    /// What actually drew it, reported by the generator rather than assumed by
+    /// the caller. A pack holding a fine-tune installs and runs exactly like
+    /// stock, so a hard-coded name in the artwork would be a guess recorded as
+    /// a fact — the same trap `fixedControlStrength` was added for.
+    public var modelID: String
 
     public init(
         imageURL: URL, subject: String, why: String, seed: Int64,
-        controlStrength: Double, renderIndex: Int, costCents: Int
+        controlStrength: Double, renderIndex: Int, costCents: Int,
+        modelID: String
     ) {
         self.imageURL = imageURL
         self.subject = subject
@@ -126,6 +132,7 @@ public struct GeneratedCandidate: Sendable, Equatable, Codable {
         self.controlStrength = controlStrength
         self.renderIndex = renderIndex
         self.costCents = costCents
+        self.modelID = modelID
     }
 }
 

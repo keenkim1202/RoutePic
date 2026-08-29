@@ -87,7 +87,8 @@ private func candidate() -> GeneratedCandidate {
     GeneratedCandidate(
         imageURL: URL(string: "https://example.invalid/a.png")!,
         subject: "웅크린 여우", why: "닫힌 곡선", seed: 7,
-        controlStrength: 0.65, renderIndex: 5, costCents: 4
+        controlStrength: 0.65, renderIndex: 5, costCents: 4,
+        modelID: "test-model"
     )
 }
 

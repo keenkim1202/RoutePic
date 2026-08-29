@@ -14,6 +14,23 @@ struct ModelPackTests {
         #expect(pack.controlNetNames == ["lllyasviel_sd-controlnet-scribble"])
     }
 
+    /// The pipeline is handed one. Naming the others in an artwork's
+    /// provenance would credit models that never ran.
+    @Test("The active ControlNet is the one the pipeline gets")
+    func activeControlNetIsTheOneThatRuns() throws {
+        let url = try ModelPackFixture.make(
+            ModelPackFixture.complete + [
+                "controlnet/other_sd-controlnet-scribble.mlmodelc/coremldata.bin",
+                "controlnet/other_sd-controlnet-scribble.mlmodelc/weights/w.bin",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let pack = try ModelPack.inspect(at: url)
+        #expect(pack.controlNetNames.count == 2)
+        #expect(pack.activeControlNet == pack.controlNetNames.first)
+    }
+
     @Test("A chunked UNet is as good as a whole one")
     func acceptsAChunkedUnet() throws {
         let url = try ModelPackFixture.make(ModelPackFixture.chunkedUnet)
