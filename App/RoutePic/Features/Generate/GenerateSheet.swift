@@ -92,6 +92,13 @@ struct GenerateSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // One element, and it says whether it is the chosen one — the
+                // tick alone is invisible to VoiceOver.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(candidate.subject). \(candidate.why)")
+                .accessibilityAddTraits(
+                    coordinator?.subject == candidate ? [.isButton, .isSelected] : [.isButton]
+                )
             }
             .listStyle(.plain)
 
@@ -104,10 +111,12 @@ struct GenerateSheet: View {
     private var running: some View {
         VStack(spacing: 20) {
             ProgressView()
+                .accessibilityHidden(true)
             Text("Drawing on this device. Nothing leaves your phone.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.updatesFrequently)
             Button("Cancel") { coordinator?.cancel() }
         }
         .padding()
@@ -135,14 +144,21 @@ struct GenerateSheet: View {
                             }
                             .frame(width: 260, height: 260)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
+                            // `DESIGN.md` §9 — the alt text is the subject and
+                            // the reason, never "image".
+                            .accessibilityElement()
+                            .accessibilityLabel("\(candidate.subject). \(candidate.why)")
 
                             Text(candidate.why)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 260)
+                                // Already spoken by the picture above it.
+                                .accessibilityHidden(true)
 
                             Button("Keep this one") { save(candidate) }
                                 .buttonStyle(.borderedProminent)
+                                .accessibilityLabel("Keep \(candidate.subject)")
                         }
                     }
                 }

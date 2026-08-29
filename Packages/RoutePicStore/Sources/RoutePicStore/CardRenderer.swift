@@ -310,3 +310,23 @@ public enum CardFormatter {
         return formatter.string(from: date)
     }
 }
+
+extension Activity {
+    /// What the route line alone is. Used wherever the line is what is drawn,
+    /// even when the activity also has a picture — announcing the picture over
+    /// a route preview describes something that is not on screen.
+    public var routeDescription: String {
+        "\(mode.title), \(CardFormatter.distance(distanceMeters)). Route drawing."
+    }
+
+    /// What VoiceOver says about an activity's picture: `DESIGN.md` §9 — the
+    /// subject and the reason it was chosen, never "image". "This is your
+    /// route" is the claim, and a VoiceOver user judges it like anyone else.
+    public var accessibilityDescription: String {
+        guard let artwork = artworks.first(where: \.isSelected) ?? artworks.first else {
+            return routeDescription
+        }
+        let base = "\(mode.title), \(CardFormatter.distance(distanceMeters))"
+        return "\(base). \(artwork.subject). \(artwork.why)"
+    }
+}

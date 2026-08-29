@@ -69,6 +69,12 @@ struct RouteThumbnail: View {
                 .make(from: activity, purpose: .display, canvasSize: 256)
                 .shape.canonical
         }
+        // Carried here rather than at each use, so a bare one is never silent.
+        // The route's own description, not the activity's: this draws the line
+        // even when a picture exists, and the subject picker shows it while
+        // choosing what to draw next.
+        .accessibilityElement()
+        .accessibilityLabel(activity.routeDescription)
     }
 }
 

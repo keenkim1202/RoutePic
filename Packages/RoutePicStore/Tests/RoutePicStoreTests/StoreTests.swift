@@ -280,6 +280,32 @@ struct ActivityRepositoryTests {
         #expect(try repository.artworkStore.data(named: artwork.thumbnailFileName).count == 3)
     }
 
+    /// `DESIGN.md` §9 — "this is your route" is the claim the feature rests on,
+    /// and somebody using VoiceOver is as entitled to judge it as anyone else.
+    @Test("VoiceOver gets the subject and the reason, never \"image\"")
+    func accessibilityDescriptionCarriesTheClaim() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+
+        #expect(activity.accessibilityDescription.contains("Run"))
+        #expect(activity.accessibilityDescription.contains("Route drawing"))
+
+        let artwork = try attach(to: activity, using: repository)
+        let described = activity.accessibilityDescription
+        #expect(described.contains(artwork.subject))
+        #expect(described.contains(artwork.why))
+        #expect(!described.lowercased().contains("image"))
+
+        // The route drawing keeps describing the route. The subject picker
+        // shows one while choosing what to draw next, and announcing the
+        // previous picture there describes something not on screen.
+        #expect(activity.routeDescription.contains("Route drawing"))
+        #expect(!activity.routeDescription.contains(artwork.subject))
+    }
+
     private func attach(to activity: Activity, using repository: ActivityRepository) throws -> Artwork {
         try repository.attachArtwork(
             to: activity,
