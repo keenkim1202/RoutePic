@@ -40,7 +40,7 @@ public struct ControlImageRenderer: Sendable {
         public static let thick = Style(lineWidth: 14)
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case contextCreationFailed
         case imageCreationFailed
         case encodingFailed

@@ -37,7 +37,7 @@ public final class SessionJournal: @unchecked Sendable {
         }
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case cannotCreate(URL, underlying: String)
         case writeFailed(String)
 

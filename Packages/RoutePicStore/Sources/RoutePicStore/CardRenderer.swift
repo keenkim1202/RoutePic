@@ -73,7 +73,7 @@ public struct CardRenderer: Sendable {
         )
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case contextCreationFailed
         public var description: String { "Could not create the card bitmap context." }
     }

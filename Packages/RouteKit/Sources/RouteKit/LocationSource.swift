@@ -1,4 +1,5 @@
 import Foundation
+import ShapeKit
 
 /// Where fixes come from.
 ///
@@ -24,7 +25,7 @@ public enum LocationAuthorization: String, Sendable, Equatable {
     case always
 }
 
-public enum LocationSourceError: Error, Equatable, CustomStringConvertible {
+public enum LocationSourceError: DescribedError, Equatable {
     case authorizationDenied
     case reducedAccuracy
     case unavailable(String)

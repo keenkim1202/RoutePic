@@ -12,7 +12,7 @@ import FoundationXML
 /// corpus (`PLAN.md` M0.5) and for the app's export (`DESIGN.md` §9).
 public enum GPXDocument {
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case malformed(String)
         case noTrackPoints
 

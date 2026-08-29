@@ -74,7 +74,7 @@ public struct ShapeFidelity: Sendable {
         public static let standard = Configuration()
     }
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: DescribedError {
         case unreadableImage
         case emptyShape
 
