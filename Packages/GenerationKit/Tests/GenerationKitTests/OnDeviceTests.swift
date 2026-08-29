@@ -41,6 +41,7 @@ private actor StubGenerator: OnDeviceImageGenerator {
     }
 
     func unavailability() async -> OnDeviceUnavailability? { unavailable }
+    var modelIdentifier: String { "stub-model" }
 
     func generate(
         controlImage: Data, prompt: String, negativePrompt: String,
@@ -334,6 +335,17 @@ struct UnmeteredClientTests {
             Issue.record("a straight line should be refused for its shape, not for the pack")
             return
         }
+    }
+
+    /// The app used to stamp a fixed name on every artwork, so a pack holding
+    /// a fine-tune produced provenance that named a model it never ran.
+    @Test("The artwork records what the generator says ran, not a guess")
+    func candidatesCarryTheGeneratorsIdentity() async throws {
+        let (generation, _) = client(makeTransport(), allowance: 0)
+        let candidates = try await generation.generate(request())
+
+        #expect(!candidates.isEmpty)
+        #expect(candidates.allSatisfy { $0.modelID == "stub-model" })
     }
 
     @Test("An unsuitable route is still refused on-device")

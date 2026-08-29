@@ -37,6 +37,13 @@ public protocol OnDeviceImageGenerator: Sendable {
     /// `nil` means the requested strength is honoured.
     var fixedControlStrength: Double? { get }
 
+    /// What this generator is, in as much detail as it can honestly give.
+    ///
+    /// Read from the generator, not written by the caller: nothing about an
+    /// installed pack says which base model it holds, so the app must not
+    /// stamp one onto the artwork.
+    var modelIdentifier: String { get async }
+
     func generate(
         controlImage: Data,
         prompt: String,
@@ -49,6 +56,10 @@ public protocol OnDeviceImageGenerator: Sendable {
 
 extension OnDeviceImageGenerator {
     public var fixedControlStrength: Double? { nil }
+
+    public var modelIdentifier: String {
+        get async { "unknown" }
+    }
 
     public var isAvailable: Bool {
         get async { await unavailability() == nil }
@@ -230,7 +241,8 @@ public actor OnDeviceTransport: GenerationTransport {
                         seed: Int64(seed),
                         controlStrength: strength,
                         renderIndex: subject.3,
-                        costCents: 0
+                        costCents: 0,
+                        modelID: await generator.modelIdentifier
                     )
                 )
             }

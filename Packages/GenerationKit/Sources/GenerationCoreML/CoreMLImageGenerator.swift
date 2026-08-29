@@ -61,6 +61,19 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
     /// which is why `SPIKE-RESULTS.md` ran its grid outside this package.
     public nonisolated var fixedControlStrength: Double? { 1.0 }
 
+    /// The ControlNet the installed pack actually holds, which is the only
+    /// part of its identity that is discoverable. The base model is not: a
+    /// compiled `.mlmodelc` carries no version, so a fine-tune loads and runs
+    /// exactly like stock and naming one here would be a guess.
+    public var modelIdentifier: String {
+        get async {
+            guard case .success(let pack) = await resolvedPack() else {
+                return "no pack installed"
+            }
+            return "unverified base + \(pack.activeControlNet ?? "no ControlNet")"
+        }
+    }
+
     /// Why generation cannot run, or `nil` when it can.
     public func unavailability() async -> OnDeviceUnavailability? {
         if case .failure(let reason) = await resolvedPack() { return reason }
@@ -141,7 +154,7 @@ public actor CoreMLImageGenerator: OnDeviceImageGenerator {
         // from the model id, so no converted pack ever contains "ControlNet".
         let created = try StableDiffusionPipeline(
             resourcesAt: configuration.resourcesURL,
-            controlNet: Array(pack.controlNetNames.prefix(1)),
+            controlNet: [pack.activeControlNet].compactMap { $0 },
             configuration: modelConfiguration,
             reduceMemory: configuration.reduceMemory
         )

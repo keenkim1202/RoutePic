@@ -16,6 +16,11 @@ public struct ModelPack: Sendable, Equatable {
     /// `lllyasviel_sd-controlnet-scribble` and they cannot be hard-coded.
     public let controlNetNames: [String]
 
+    /// The one handed to the pipeline. `StableDiffusionPipeline` is given a
+    /// single ControlNet, so provenance must name that one rather than
+    /// everything the pack happens to contain.
+    public var activeControlNet: String? { controlNetNames.first }
+
     public static let controlNetDirectory = "controlnet"
 
     /// The app renders a centreline and records `conditionMode: "scribble"`.
