@@ -44,6 +44,7 @@ struct RouteThumbnail: View {
     let activity: Activity
 
     @State private var shape: OrientedShape?
+    @State private var unreadable = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -52,7 +53,12 @@ struct RouteThumbnail: View {
                     colors: [Color(white: 0.12), Color(white: 0.22)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 )
-                if let shape {
+                if unreadable {
+                    // Otherwise a corrupt recording is an unexplained blank,
+                    // which is what refusing to draw it was meant to avoid.
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                } else if let shape {
                     RouteShapePath(shape: shape)
                         .stroke(
                             Color.accentColor,
@@ -68,13 +74,18 @@ struct RouteThumbnail: View {
             shape = try? DerivedRoute
                 .make(from: activity, purpose: .display, canvasSize: 256)
                 .shape.canonical
+            unreadable = shape == nil && !activity.isRouteReadable
         }
         // Carried here rather than at each use, so a bare one is never silent.
         // The route's own description, not the activity's: this draws the line
         // even when a picture exists, and the subject picker shows it while
         // choosing what to draw next.
         .accessibilityElement()
-        .accessibilityLabel(activity.routeDescription)
+        .accessibilityLabel(
+            unreadable
+                ? "\(activity.mode.title). This recording could not be read."
+                : activity.routeDescription
+        )
     }
 }
 

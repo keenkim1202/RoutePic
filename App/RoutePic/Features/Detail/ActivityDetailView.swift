@@ -30,7 +30,10 @@ struct ActivityDetailView: View {
                 hero
                 if let artwork = selectedArtwork { interpretation(artwork) }
                 statistics
-                if activity.gapCount > 0 { gapNotice }
+                // One decode for both, and for the sentence inside the notice.
+                let route = activity.routeSummary()
+                if !route.isReadable { unreadableNotice }
+                if route.gapCount > 0 { gapNotice(route.gapCount) }
                 noteEditor
             }
             .padding()
@@ -129,10 +132,22 @@ struct ActivityDetailView: View {
         }
     }
 
-    private var gapNotice: some View {
+    private var unreadableNotice: some View {
+        // Refusing to draw the route only tells somebody something if they are
+        // told. `gapCount` is zero here, so the gap notice says nothing.
+        Label(
+            "This recording's structure could not be read, so its route is not drawn."
+                + " Pictures and notes are unaffected.",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+
+    private func gapNotice(_ gapCount: Int) -> some View {
         // DESIGN.md §5.4 — a dropout is shown, never quietly bridged.
         Label(
-            "\(activity.gapCount) stretch\(activity.gapCount == 1 ? "" : "es") of this route were not recorded"
+            "\(gapCount) stretch\(gapCount == 1 ? "" : "es") of this route were not recorded"
                 + (activity.gapDuration > 0
                    ? " (about \(CardFormatter.duration(activity.gapDuration)))." : "."),
             systemImage: "point.topleft.down.to.point.bottomright.curvepath.fill"

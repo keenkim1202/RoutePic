@@ -99,7 +99,15 @@ public enum PolylineCodec {
 
         guard try cursor.readBytes(4).elementsEqual(magic) else { throw DecodingError.badMagic }
         let flags = Flags(rawValue: try cursor.readByte())
-        let count = Int(try cursor.readVarint())
+        // A damaged blob can claim any number of points. Converting the claim
+        // traps above `Int.max`, and merely enormous values fill arrays until
+        // the process dies — `try?` catches neither. Every point costs at
+        // least a byte, so a count beyond the bytes left is not honest.
+        let claimed = try cursor.readVarint()
+        guard claimed <= UInt64(cursor.remaining) else {
+            throw DecodingError.truncated(field: "count")
+        }
+        let count = Int(claimed)
         guard count > 0 else { return [] }
 
         let latitudes = try cursor.readDeltaStream(count: count, field: "latitude")
@@ -118,7 +126,12 @@ public enum PolylineCodec {
             var values: [Int64] = []
             values.reserveCapacity(count)
             for _ in 0..<count {
-                values.append(Int64(try cursor.readVarint()))
+                // The other narrowing conversion. Accuracy is written as a
+                // plain varint, so a damaged one above `Int64.max` traps here
+                // exactly as an oversized count did above.
+                let raw = try cursor.readVarint()
+                guard raw <= UInt64(Int64.max) else { throw DecodingError.varintOverflow }
+                values.append(Int64(raw))
             }
             accuracies = values
         }
@@ -172,6 +185,8 @@ public enum PolylineCodec {
         var index = 0
 
         init(_ data: Data) { self.bytes = Array(data) }
+
+        var remaining: Int { bytes.count - index }
 
         mutating func readByte() throws -> UInt8 {
             guard index < bytes.count else { throw DecodingError.truncated(field: "header") }
