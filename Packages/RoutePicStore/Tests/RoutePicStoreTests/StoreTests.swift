@@ -36,6 +36,28 @@ enum StoreFixtures {
         )
     }
 
+    /// Two runs with a real hole in the clock between them. `route(gapAfter:)`
+    /// marks a gap segment without leaving one in the timestamps, which is no
+    /// use for testing a rebuild from those timestamps.
+    static func routeWithTimeGap(perRun: Int = 10, hole: TimeInterval = 1_200) -> Route {
+        let metresPerDegree = ENUProjection.earthRadius * .pi / 180
+        var points: [RoutePoint] = []
+        for index in 0..<(perRun * 2) {
+            let elapsed = Double(index) * 5 + (index >= perRun ? hole : 0)
+            points.append(
+                RoutePoint(
+                    latitude: 37.5665 + Double(index) * 10 / metresPerDegree,
+                    longitude: 126.9780,
+                    altitude: 30,
+                    timestamp: epoch.addingTimeInterval(elapsed),
+                    horizontalAccuracy: 8,
+                    verticalAccuracy: 5
+                )
+            )
+        }
+        return Route(points: points, splittingGapsLongerThan: 90)
+    }
+
     static func pngData(_ side: Int = 32) -> Data {
         let context = CGContext(
             data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
@@ -278,6 +300,43 @@ struct ActivityRepositoryTests {
         )
 
         #expect(try repository.artworkStore.data(named: artwork.thumbnailFileName).count == 3)
+    }
+
+    /// Both guesses lie. One long run draws a straight line across a dropout;
+    /// rebuilding from stored timestamps invents a gap wherever somebody sat
+    /// still long enough to be filtered out. A route is a claim about where a
+    /// person went, so neither is offered.
+    @Test("A corrupt segment blob refuses the route rather than guessing")
+    func corruptSegmentsRefuseTheRoute() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.routeWithTimeGap(), mode: .walk,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(1_500)
+        )
+        #expect(activity.gapCount == 1)
+
+        activity.segmentsBlob = Data([0xFF, 0xFE, 0xFD])
+        try repository.context.save()
+
+        #expect(throws: StoredRouteFailure.segmentationLost) { try activity.route() }
+        // Not a second claim on top of a broken one.
+        #expect(activity.gapCount == 0)
+    }
+
+    /// Coordinates cannot be reconstructed from anything, so this one has to be
+    /// loud: showing an empty route would hide the loss.
+    @Test("A corrupt route blob throws rather than showing nothing")
+    func corruptRouteBlobThrows() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+
+        activity.routeBlob = Data([0xFF])
+        try repository.context.save()
+
+        #expect(throws: (any Error).self) { try activity.route() }
     }
 
     private func attach(to activity: Activity, using repository: ActivityRepository) throws -> Artwork {
