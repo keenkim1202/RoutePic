@@ -193,16 +193,19 @@ public final class ActivityRepository {
         try context.save()
     }
 
-    /// Attaches a generated image.
+    /// Attaches a generated image, deriving its thumbnail.
     ///
     /// The file lands before the row so a crash between the two leaves an orphan
     /// file — recoverable by `OrphanCleaner` — rather than a row pointing at
     /// nothing, which the UI would render as a broken tile forever.
+    ///
+    /// The thumbnail is not a parameter on purpose: the one caller there was
+    /// passed the full 1024² image, so every picture was stored twice at full
+    /// size and the 3-column grid decoded all of it.
     @discardableResult
     public func attachArtwork(
         to activity: Activity,
         imageData: Data,
-        thumbnailData: Data,
         subject: String,
         why: String,
         stylePreset: String,
@@ -218,6 +221,10 @@ public final class ActivityRepository {
         let id = UUID()
         let imageName = "\(id.uuidString).png"
         let thumbnailName = "\(id.uuidString)-thumb.png"
+
+        // A picture nobody can see beats a picture nobody kept: if the scale
+        // fails, the full image stands in rather than losing the artwork.
+        let thumbnailData = (try? ThumbnailRenderer.thumbnail(fromEncoded: imageData)) ?? imageData
 
         try artworkStore.write(imageData, named: imageName)
         do {

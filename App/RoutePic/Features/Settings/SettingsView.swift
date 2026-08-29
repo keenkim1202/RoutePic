@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var modelState: ModelState = .checking
     @State private var showsModelPicker = false
     @State private var installTask: Task<Void, Never>?
+    @State private var pictureBytes: Int64 = 0
 
     var body: some View {
         NavigationStack {
@@ -60,6 +61,10 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    LabeledContent(
+                        "Pictures on this device",
+                        value: pictureBytes.formatted(.byteCount(style: .file))
+                    )
                     if isExporting {
                         HStack {
                             ProgressView()
@@ -98,7 +103,10 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .task { await refreshModelState() }
+            .task {
+                refreshStorage()
+                await refreshModelState()
+            }
             .fileImporter(
                 isPresented: $showsModelPicker,
                 allowedContentTypes: [.folder]
@@ -112,7 +120,10 @@ struct SettingsView: View {
             // note or deleting all happen on other tabs while this view stays
             // alive, so the link is dropped on the way back in rather than
             // sharing a zip that no longer matches the collection.
-            .onAppear { exportURL = nil }
+            .onAppear {
+                exportURL = nil
+                refreshStorage()
+            }
             .confirmationDialog(
                 "Delete everything?",
                 isPresented: $showsDeleteAllConfirmation,
@@ -167,6 +178,10 @@ struct SettingsView: View {
             iCloud Drive, and pick it here. Everything else works without it.
             """)
         }
+    }
+
+    private func refreshStorage() {
+        pictureBytes = (try? environment.artworkStore.totalBytes()) ?? 0
     }
 
     private func refreshModelState() async {
@@ -246,6 +261,8 @@ struct SettingsView: View {
         exportURL = nil
         do {
             try environment.repository.deleteAllData()
+            // The screen stays up after this, so the figure has to move with it.
+            refreshStorage()
             message = "All data deleted."
         } catch {
             message = error.localizedDescription
