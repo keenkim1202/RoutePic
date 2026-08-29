@@ -93,6 +93,28 @@ struct SettingsView: View {
                 modelSection
 
                 Section {
+                    LabeledContent("RoutePic's claim over them", value: "None")
+                } header: {
+                    Text("Pictures you make")
+                } footer: {
+                    // `PLAN.md` M7.9. What RoutePic decides is the only thing
+                    // it can state. Whether an output can be owned, and whose
+                    // rights it might touch, are not RoutePic's to answer — and
+                    // the model's licence is one constraint among those, not
+                    // the whole of them.
+                    Text("""
+                    RoutePic claims nothing over the pictures it draws. That is \
+                    a decision about RoutePic, not a statement of your rights: \
+                    whether an AI-generated picture can be owned at all, and \
+                    whether one touches somebody else's copyright, trademark or \
+                    likeness, are separate questions. The model's licence is \
+                    another — Stable Diffusion 1.5 ships under CreativeML Open \
+                    RAIL-M, which restricts some uses. RoutePic cannot check \
+                    which model a pack holds, and cannot advise you on any of it.
+                    """)
+                }
+
+                Section {
                     LabeledContent("Version", value: "0.9")
                     LabeledContent("Picture generation", value: "On this device")
                 } footer: {
