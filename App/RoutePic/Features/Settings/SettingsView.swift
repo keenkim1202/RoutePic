@@ -85,7 +85,10 @@ struct SettingsView: View {
                     Text("Your data")
                 } footer: {
                     Text("""
-                    A zip holding one GPX file per activity, every picture, and \
+                    Pictures are the largest thing stored and the only part \
+                    measured above; routes and notes grow too, far more slowly. \
+                    An activity's pictures can be removed without losing its \
+                    route. A zip holding one GPX file per activity, every picture, and \
                     an index with your notes. Routes are exported whole — the \
                     privacy trim applies to what you share, not to your own copy.
                     """)

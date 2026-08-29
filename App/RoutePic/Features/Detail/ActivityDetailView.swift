@@ -18,6 +18,7 @@ struct ActivityDetailView: View {
     @State private var note: String = ""
     @State private var shareItem: ShareableCard?
     @State private var showsDeleteConfirmation = false
+    @State private var showsPictureDeleteConfirmation = false
     @State private var errorMessage: String?
 
     private var selectedArtwork: Artwork? {
@@ -54,6 +55,23 @@ struct ActivityDetailView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .confirmationDialog(
+            activity.artworks.count == 1 ? "Delete the picture?" : "Delete all pictures?",
+            isPresented: $showsPictureDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deletePictures() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                activity.artworks.count == 1
+                    ? "The route, its note and everything else stay."
+                    : """
+                        All \(activity.artworks.count) pictures for this activity go. \
+                        The route, its note and everything else stay.
+                        """
+            )
         }
         .confirmationDialog(
             "Delete this activity?",
@@ -177,6 +195,20 @@ struct ActivityDetailView: View {
                 Button("Share…", systemImage: "square.and.arrow.up") { prepareShare() }
                 Button("Export GPX", systemImage: "arrow.down.doc") { exportGPX() }
                 Divider()
+                // The repository could always do this; nothing ever offered it,
+                // so the only way to reclaim space was to delete the run too.
+                // Every picture, not the shown one. Only the selected artwork
+                // is ever displayed and nothing calls `select`, so a second
+                // generation leaves one nobody can see — offering to delete
+                // "this picture" would leave that one behind, still costing
+                // space nobody can account for.
+                if !activity.artworks.isEmpty {
+                    Button(
+                        activity.artworks.count == 1 ? "Delete the picture" : "Delete the pictures",
+                        systemImage: "photo.badge.minus",
+                        role: .destructive
+                    ) { showsPictureDeleteConfirmation = true }
+                }
                 Button("Delete", systemImage: "trash", role: .destructive) {
                     showsDeleteConfirmation = true
                 }
@@ -235,6 +267,17 @@ struct ActivityDetailView: View {
                 mapSnapshotIsUnsafe: derived.mapSnapshotIsUnsafe,
                 timeZone: TimeZone(identifier: activity.timeZoneID) ?? .current
             )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deletePictures() {
+        do {
+            for artwork in activity.artworks {
+                try environment.repository.delete(artwork)
+            }
+            onChange()
         } catch {
             errorMessage = error.localizedDescription
         }

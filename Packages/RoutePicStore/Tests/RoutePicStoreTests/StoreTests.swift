@@ -422,6 +422,47 @@ struct ActivityRepositoryTests {
         #expect(names.contains { $0.contains(artwork.id.uuidString) })
     }
 
+    /// The only way to reclaim space used to be deleting the activity. This is
+    /// what the detail screen now calls instead.
+    @Test("Deleting a picture frees its files and keeps the activity")
+    func deletingArtworkFreesSpace() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        let artwork = try attach(to: activity, using: repository)
+        let before = try repository.artworkStore.totalBytes()
+        #expect(before > 0)
+
+        try repository.delete(artwork)
+
+        #expect(try repository.artworkStore.totalBytes() == 0)
+        #expect(try repository.count() == 1)
+        #expect(activity.artworks.isEmpty)
+    }
+
+    /// Only the first artwork is auto-selected and nothing calls `select`, so a
+    /// second generation is invisible. Deleting just the shown one would leave
+    /// it costing space nobody can see or reclaim.
+    @Test("Deleting an activity's pictures leaves none behind")
+    func deletingEveryArtworkLeavesNothing() throws {
+        let repository = try makeRepository()
+        let activity = try repository.save(
+            route: StoreFixtures.route(), mode: .run,
+            startedAt: StoreFixtures.epoch, endedAt: StoreFixtures.epoch.addingTimeInterval(600)
+        )
+        _ = try attach(to: activity, using: repository)
+        let second = try attach(to: activity, using: repository)
+        #expect(activity.artworks.count == 2)
+        #expect(!second.isSelected)
+
+        for artwork in activity.artworks { try repository.delete(artwork) }
+
+        #expect(activity.artworks.isEmpty)
+        #expect(try repository.artworkStore.totalBytes() == 0)
+    }
+
     private func attach(to activity: Activity, using repository: ActivityRepository) throws -> Artwork {
         try repository.attachArtwork(
             to: activity,
