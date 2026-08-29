@@ -362,13 +362,3 @@ extension RecordingMode {
         }
     }
 }
-
-extension Activity {
-    /// `DESIGN.md` §9 — VoiceOver gets the subject and the reason, not "image".
-    var accessibilityDescription: String {
-        let artwork = artworks.first(where: \.isSelected) ?? artworks.first
-        let base = "\(mode.title), \(CardFormatter.distance(distanceMeters))"
-        guard let artwork else { return "\(base). Route drawing." }
-        return "\(base). \(artwork.subject). \(artwork.why)"
-    }
-}

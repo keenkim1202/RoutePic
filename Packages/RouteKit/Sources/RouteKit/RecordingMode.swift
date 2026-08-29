@@ -68,3 +68,15 @@ public enum RecordingMode: String, Sendable, Codable, CaseIterable {
         }
     }
 }
+
+extension RecordingMode {
+    /// The mode's name as a person reads it. Lives with the type because the
+    /// store speaks it too, in `Activity.accessibilityDescription`.
+    public var title: String {
+        switch self {
+        case .walk: "Walk"
+        case .run: "Run"
+        case .drive: "Drive"
+        }
+    }
+}

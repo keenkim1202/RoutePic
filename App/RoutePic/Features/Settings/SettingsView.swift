@@ -70,6 +70,7 @@ struct SettingsView: View {
                             ProgressView()
                             Text("Preparing your export…").foregroundStyle(.secondary)
                         }
+                        .accessibilityElement(children: .combine)
                     } else if let exportURL {
                         ShareLink(item: exportURL) {
                             Label("Share your export", systemImage: "square.and.arrow.up")
@@ -154,12 +155,16 @@ struct SettingsView: View {
             switch modelState {
             case .checking:
                 HStack { ProgressView(); Text("Checking…").foregroundStyle(.secondary) }
+                    .accessibilityElement(children: .combine)
             case .absent:
                 Button("Add a picture model") { showsModelPicker = true }
             case .installing(let fraction):
                 ProgressView(value: fraction) {
                     Text("Copying the picture model…")
                 }
+                // A bare progress bar announces no number, and this one runs
+                // for minutes.
+                .accessibilityValue("\(Int(fraction * 100)) percent")
                 Button("Stop", role: .destructive) { installTask?.cancel() }
             case .installed(let bytes):
                 LabeledContent("Installed", value: bytes.formatted(.byteCount(style: .file)))

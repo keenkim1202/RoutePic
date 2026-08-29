@@ -264,14 +264,6 @@ struct LiveRouteMap: View {
 }
 
 extension RecordingMode {
-    var title: String {
-        switch self {
-        case .walk: "Walk"
-        case .run: "Run"
-        case .drive: "Drive"
-        }
-    }
-
     var explanation: String {
         switch self {
         case .walk: "Records a point every 5 m."
