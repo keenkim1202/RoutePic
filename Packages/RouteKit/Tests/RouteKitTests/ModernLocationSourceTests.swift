@@ -3,6 +3,16 @@ import Foundation
 import Testing
 @testable import RouteKit
 
+/// A flag a test can wait on without awaiting the thing it is testing — the
+/// bugs here are ones that hang, and awaiting them stalls the suite instead of
+/// failing it.
+private final class Done: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.withLock { value } }
+    func set() { lock.withLock { value = true } }
+}
+
 /// The stream itself needs a device and a walk (`PLAN.md` T-1). What is checked
 /// here is the mapping either side of it — the part that decides whether the
 /// two sources refuse a session for the same reasons.
@@ -52,6 +62,28 @@ struct ModernLocationSourceTests {
         #expect(ModernLocationSource.failure(for: Odd()) as? Odd == Odd())
     }
 
+    /// `updates()` installs a stream before anything starts, and the protocol
+    /// says updates finish when `stop()` is called. A teardown that only runs
+    /// when a run exists leaves that consumer waiting for ever.
+    @Test("Stopping finishes the stream even when nothing was started")
+    func stopFinishesAnUnstartedStream() async throws {
+        let source = ModernLocationSource()
+        let stream = source.updates()
+        let done = Done()
+        let consumer = Task {
+            for await _ in stream {}
+            done.set()
+        }
+
+        await source.stop()
+
+        for _ in 0..<40 where !done.isSet {
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        #expect(done.isSet)
+        consumer.cancel()
+    }
+
     @Test("Stopping before starting is not an error")
     func stopWithoutStart() async {
         let source = ModernLocationSource()
@@ -62,13 +94,6 @@ struct ModernLocationSourceTests {
     /// `start` still waiting on it would wait for ever.
     @Test("Stopping while a start is waiting releases it")
     func stopReleasesAPendingStart() async throws {
-        final class Done: @unchecked Sendable {
-            private let lock = NSLock()
-            private var value = false
-            var isSet: Bool { lock.withLock { value } }
-            func set() { lock.withLock { value = true } }
-        }
-
         let source = ModernLocationSource()
         let done = Done()
         let started = Task {
