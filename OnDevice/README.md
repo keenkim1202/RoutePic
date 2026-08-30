@@ -84,6 +84,68 @@ centreline and records `conditionMode: "scribble"`, so a Canny or pose pack
 would load happily and stamp that claim on a picture conditioned on something
 else. `ModelPack` refuses it rather than let the metadata lie.
 
+## Answering the gate question first
+
+`DESIGN.md` v0.6 leaves one thing unanswered, and it is the one the product
+rests on: **at strength 1.4–1.8 the animal survives and the route is maximally
+reflected — but nobody has been shown one and asked whether it reads as their
+route.** `edgeToRoute` cannot answer it (0.0607 on a success, 0.0598 on a
+failure), so a person has to.
+
+**This does not need Core ML.** Apple's pipeline adds the ControlNet residuals
+unscaled and exposes no conditioning scale — that is why the app records
+`fixedControlStrength = 1.0`, and why the last spike had to patch a harness that
+then lived outside the repository and was lost. `diffusers` has the knob:
+
+```sh
+python3.11 -m venv venv
+./venv/bin/pip install diffusers transformers accelerate torch pillow
+
+# `swift build` compiles but installs nothing, so run them where they land.
+# Functions, not variables: zsh does not word-split a scalar, so a string
+# holding a command and its arguments is looked up as one long program name.
+shapelab() { swift run -c release --package-path Packages/ShapeKit shapelab "$@"; }
+genlab()   { swift run -c release --package-path Packages/GenerationKit genlab "$@"; }
+
+# `your-route.gpx` must be the app's own export (Detail -> Export GPX). Only
+# that file carries the segmentation the app stored: a recorder's GPX declares
+# its own `<trkseg>` breaks, and a dropout the app cuts is then bridged here,
+# changing both the control image and the subject. Both tools warn if the file
+# was written by anything else.
+#
+# Both flags must match the activity, and both commands must get the same
+# pair. `--mode` picks the resample spacing (5 / 8 / 25 m) and `--trim` is the
+# person's privacy setting (0, 200 or 500) — either one changes the shape, and
+# the shape can change the subject. Judged with the wrong pair, the sweep is
+# measuring a picture the app would not have made.
+shapelab render your-route.gpx --mode walk --trim 200 --out ./frames/
+
+./venv/bin/python OnDevice/sweep.py \
+  --control ./frames/00_000.png \
+  --prompt "$(genlab subject your-route.gpx --mode walk --trim 200)" \
+  --out ./sweep
+```
+
+That is 15 images — three strengths, five seeds — named `001.png` upward in a
+shuffled order, so a filename says nothing about its condition. `blind.json` is
+what to judge from; `conditions.json` is the key and should stay shut until
+after. The prompt is Stage 1's subject plus the app's own style and negative
+prompt, so what is judged is what the app would produce — never hand-written
+(SP-1 #7), and the runner is usually a judge (SP-1 #9).
+
+`genlab` takes the GPX, not a fingerprint, because it applies every refusal the
+app applies: under 300 m (`GenerationClient.availability`), near-straight
+(`isDegenerate`), and nothing recognisable (`GenerationCoordinator.prepare`).
+Two of those cannot be seen in a fingerprint at all. It prints nothing and exits
+non-zero for any of them — there is no point judging an image the app would
+never make. The length it checks is what survives trimming, which is what
+production measures: a 400 m route can fall under the bar once its ends go.
+
+The one question: **does this read as the route you walked?**
+
+Conversion below is for shipping on a device, and is worth doing only once that
+answer is yes.
+
 ## Getting the pack onto a device
 
 Roughly 1–2 GB with 6-bit palettisation, so it is not in the app bundle. There

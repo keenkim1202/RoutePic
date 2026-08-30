@@ -193,4 +193,25 @@ struct GPXDocumentTests {
             #expect(abs(a.longitude - b.longitude) < 1e-9)
         }
     }
+
+    @Test("The creator is read, so a tool can tell the app's export from a recorder's")
+    func creatorIsRead() throws {
+        let foreign = try GPXDocument.parseWithCreator(
+            Data("""
+            <?xml version="1.0"?>
+            <gpx version="1.1" creator="Garmin Connect">
+              <trk><trkseg>
+                <trkpt lat="37.5" lon="127.0"><time>2026-08-01T00:00:00Z</time></trkpt>
+                <trkpt lat="37.501" lon="127.001"><time>2026-08-01T00:00:10Z</time></trkpt>
+              </trkseg></trk>
+            </gpx>
+            """.utf8)
+        )
+        #expect(foreign.creator == "Garmin Connect")
+        #expect(foreign.creator != GPXDocument.appCreator)
+
+        let ours = try GPXDocument.parseWithCreator(Data(GPXDocument.write(foreign.route).utf8))
+        #expect(ours.creator == GPXDocument.appCreator)
+    }
+
 }
