@@ -29,6 +29,7 @@ struct ActivityDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 hero
+                if activity.artworks.count > 1 { artworkPicker }
                 if let artwork = selectedArtwork { interpretation(artwork) }
                 statistics
                 // One decode for both, and for the sentence inside the notice.
@@ -107,6 +108,58 @@ struct ActivityDetailView: View {
         }
         .accessibilityLabel(activity.accessibilityDescription)
         .accessibilityHint(selectedArtwork == nil ? "" : "Double tap to overlay the route line")
+    }
+
+    /// The second reading is otherwise invisible: `repository.select` decides
+    /// which picture the hero, the card and VoiceOver all use, and nothing on
+    /// screen called it.
+    private var artworkPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(activity.artworks.sorted { $0.createdAt < $1.createdAt }) { artwork in
+                    Button { choose(artwork) } label: { thumbnail(artwork) }
+                        .buttonStyle(.plain)
+                        // Both halves, as the hero and the card give them
+                        // (`DESIGN.md` §9): the reason is what the choice is
+                        // between, and the subject alone cannot be compared.
+                        .accessibilityLabel("\(artwork.subject). \(artwork.why)")
+                        .accessibilityAddTraits(
+                            artwork.isSelected ? [.isButton, .isSelected] : [.isButton]
+                        )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func thumbnail(_ artwork: Artwork) -> some View {
+        Group {
+            if let data = try? environment.artworkStore.data(named: artwork.thumbnailFileName),
+               let image = PlatformImage.from(data) {
+                image.resizable().scaledToFill()
+            } else {
+                RouteThumbnail(activity: activity)
+            }
+        }
+        .frame(width: 64, height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    artwork.isSelected ? Color.accentColor : .clear,
+                    lineWidth: 3
+                )
+        }
+    }
+
+    private func choose(_ artwork: Artwork) {
+        guard !artwork.isSelected else { return }
+        do {
+            try environment.repository.select(artwork)
+            onChange()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func interpretation(_ artwork: Artwork) -> some View {

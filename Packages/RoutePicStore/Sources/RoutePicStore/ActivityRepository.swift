@@ -271,10 +271,19 @@ public final class ActivityRepository {
         return artwork
     }
 
+    /// The flags go back if the write does not land. Left changed, the hero and
+    /// the accessibility description show a selection the disk never took, and
+    /// the next unrelated save commits it.
     public func select(_ artwork: Artwork) throws {
         guard let activity = artwork.activity else { return }
+        let before = activity.artworks.map { ($0, $0.isSelected) }
         for other in activity.artworks { other.isSelected = (other.id == artwork.id) }
-        try context.save()
+        do {
+            try context.save()
+        } catch {
+            for (each, was) in before { each.isSelected = was }
+            throw error
+        }
     }
 
     /// Deletes an activity and every file it owns.
