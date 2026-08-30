@@ -39,6 +39,11 @@ final class RecordingController {
     /// `handle` first — and `ingest` refuses an idle session, dropping exactly
     /// the beginning of the route.
     private var pendingFixes: [LocationFix] = []
+    /// Low Power Mode throttles location updates, so the route comes back
+    /// coarser than the mode asked for (`DESIGN.md` §14.1). Watched rather than
+    /// read once: it can be switched on mid-run, and iOS gives no other sign.
+    private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+
     private(set) var snapshot: RecordingSession.Snapshot?
     private(set) var mode: RecordingMode = .run
 
@@ -55,6 +60,19 @@ final class RecordingController {
         self.locationSource = locationSource
         self.repository = repository
         self.journalDirectory = try? SessionRecovery.journalDirectory()
+        watchPowerState()
+    }
+
+    private func watchPowerState() {
+        let changes = NotificationCenter.default.notifications(
+            named: .NSProcessInfoPowerStateDidChange
+        )
+        Task { [weak self] in
+            for await _ in changes {
+                guard let self else { return }
+                self.isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
+        }
     }
 
     var isRecording: Bool { phase == .running || phase == .paused }
