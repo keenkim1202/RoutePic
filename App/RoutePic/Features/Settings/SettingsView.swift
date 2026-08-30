@@ -1,4 +1,3 @@
-import GenerationCoreML
 import RouteKit
 import RoutePicStore
 import SwiftUI
@@ -7,12 +6,6 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
 
     /// What the Core ML pack is doing, as far as this screen is concerned.
-    enum ModelState: Equatable {
-        case checking
-        case absent
-        case installing(Double)
-        case installed(Int64)
-    }
 
     @Environment(AppEnvironment.self) private var environment
     @AppStorage("privacyTrimMeters") private var trimMeters: Int = 200
@@ -20,9 +13,6 @@ struct SettingsView: View {
     @State private var message: String?
     @State private var isExporting = false
     @State private var exportURL: URL?
-    @State private var modelState: ModelState = .checking
-    @State private var showsModelPicker = false
-    @State private var installTask: Task<Void, Never>?
     @State private var pictureBytes: Int64 = 0
 
     var body: some View {
@@ -94,54 +84,35 @@ struct SettingsView: View {
                     """)
                 }
 
-                modelSection
-
                 Section {
                     LabeledContent("RoutePic's claim over them", value: "None")
                 } header: {
                     Text("Pictures you make")
                 } footer: {
-                    // `PLAN.md` M7.9. What RoutePic decides is the only thing
-                    // it can state. Whether an output can be owned, and whose
-                    // rights it might touch, are not RoutePic's to answer — and
-                    // the model's licence is one constraint among those, not
-                    // the whole of them.
+                    // `PLAN.md` M7.9. The generative arm is not in this
+                    // version, so the model-licence half of the old wording
+                    // described something the app no longer does.
                     Text("""
-                    RoutePic claims nothing over the pictures it draws. That is \
-                    a decision about RoutePic, not a statement of your rights: \
-                    whether an AI-generated picture can be owned at all, and \
-                    whether one touches somebody else's copyright, trademark or \
-                    likeness, are separate questions. The model's licence is \
-                    another — Stable Diffusion 1.5 ships under CreativeML Open \
-                    RAIL-M, which restricts some uses. RoutePic cannot check \
-                    which model a pack holds, and cannot advise you on any of it.
+                    RoutePic claims nothing over the cards it draws. They are \
+                    made here on your phone from your own route, by drawing it \
+                    rather than by generating anything, so no model licence \
+                    stands between you and what you share.
                     """)
                 }
 
                 Section {
                     LabeledContent("Version", value: "0.9")
-                    LabeledContent("Picture generation", value: "On this device")
+                    LabeledContent("Cards are drawn", value: "On this device")
                 } footer: {
                     Text("""
-                    Recording, your collection, notes and sharing work without \
-                    picture generation and always will.
+                    Every card is drawn from the route itself. Nothing is \
+                    generated, nothing is downloaded, and nothing is sent \
+                    anywhere to make one.
                     """)
                 }
             }
             .navigationTitle("Settings")
-            .task {
-                refreshStorage()
-                await refreshModelState()
-            }
-            .fileImporter(
-                isPresented: $showsModelPicker,
-                allowedContentTypes: [.folder]
-            ) { result in
-                switch result {
-                case .success(let url): install(from: url)
-                case .failure(let error): message = error.localizedDescription
-                }
-            }
+            .task { refreshStorage() }
             // A finished archive is a snapshot. Recording, importing, editing a
             // note or deleting all happen on other tabs while this view stays
             // alive, so the link is dropped on the way back in rather than
@@ -174,101 +145,8 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private var modelSection: some View {
-        Section {
-            switch modelState {
-            case .checking:
-                HStack { ProgressView(); Text("Checking…").foregroundStyle(.secondary) }
-                    .accessibilityElement(children: .combine)
-            case .absent:
-                Button("Add a picture model") { showsModelPicker = true }
-            case .installing(let fraction):
-                ProgressView(value: fraction) {
-                    Text("Copying the picture model…")
-                }
-                // A bare progress bar announces no number, and this one runs
-                // for minutes.
-                .accessibilityValue("\(Int(fraction * 100)) percent")
-                Button("Stop", role: .destructive) { installTask?.cancel() }
-            case .installed(let bytes):
-                LabeledContent("Installed", value: bytes.formatted(.byteCount(style: .file)))
-                Button("Replace") { showsModelPicker = true }
-                Button("Remove the picture model", role: .destructive) { removeModel() }
-            }
-        } header: {
-            Text("Picture model")
-        } footer: {
-            // Nothing is downloaded from anywhere: there is no server behind
-            // this app, which is the same reason no route ever leaves it.
-            Text("""
-            Drawing runs on this device and needs a converted Stable Diffusion \
-            model, which is too large to ship inside the app. Convert one on a \
-            Mac following OnDevice/README.md, put the folder in Files or \
-            iCloud Drive, and pick it here. Everything else works without it.
-            """)
-        }
-    }
-
     private func refreshStorage() {
         pictureBytes = (try? environment.artworkStore.totalBytes()) ?? 0
-    }
-
-    private func refreshModelState() async {
-        if let fraction = await environment.modelPackInstaller.stagedFraction() {
-            guard installTask == nil else {
-                modelState = .installing(fraction)
-                return
-            }
-            // Staged bytes with no task behind them are from a launch that was
-            // killed mid-copy. Nothing resumes it, so it goes rather than
-            // showing a bar that never moves.
-            await environment.modelPackInstaller.discardStaged()
-        }
-        if await environment.modelPackInstaller.installed() != nil {
-            modelState = .installed(await environment.modelPackInstaller.installedBytes())
-        } else {
-            modelState = .absent
-        }
-    }
-
-    private func install(from source: URL) {
-        modelState = .installing(0)
-        installTask = Task {
-            // A folder picked in Files is unreadable without this, and the
-            // failure reads as a missing model rather than a denied one.
-            let scoped = source.startAccessingSecurityScopedResource()
-            defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-
-            do {
-                try await environment.modelPackInstaller.install(from: source) { progress in
-                    await MainActor.run { modelState = .installing(progress.fraction) }
-                }
-            } catch is CancellationError {
-                // Nothing to report: the swap happens only after a complete
-                // copy, so whatever was installed is still installed.
-            } catch let problem as ModelPackProblem {
-                message = problem.description
-            } catch {
-                message = error.localizedDescription
-            }
-            installTask = nil
-            // Always re-read the disk. A failed replacement leaves the previous
-            // pack in place, and saying "not installed" over one that still
-            // works takes away the only way to remove it.
-            await refreshModelState()
-        }
-    }
-
-    private func removeModel() {
-        Task {
-            do {
-                try await environment.modelPackInstaller.remove()
-            } catch {
-                message = error.localizedDescription
-            }
-            await refreshModelState()
-        }
     }
 
     private func export() {

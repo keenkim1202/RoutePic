@@ -99,25 +99,6 @@ struct ActivitySummarySheet: View {
                     )
                 }
 
-                // DESIGN.md §4.4 — generation is additive. Saving is complete
-                // without it, and the button says so rather than implying the
-                // activity is unfinished.
-                VStack(spacing: 10) {
-                    Button {
-                        // Wired up in M6, behind the spike verdict (§13.1).
-                    } label: {
-                        Label("Make a picture", systemImage: "sparkles")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(true)
-
-                    Text("Picture generation arrives in a later build. Your activity is already saved.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-
                 Spacer()
             }
             .padding(.top)
