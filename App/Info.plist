@@ -34,6 +34,13 @@
 	<string>RoutePic reads the routes of walks, runs and rides you have already recorded, so your collection is not empty on the day you install it. Nothing is written back to Health, and no route leaves this device.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RoutePic records the shape of your walk, run or drive so it can turn the route into a picture. Recording only happens while a session you started is running.</string>
+	<!-- DESIGN.md §14.1: without this key `requestTemporaryFullAccuracy` fails,
+	     and the only way past a reduced-accuracy refusal is the Settings app. -->
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>RecordingARoute</key>
+		<string>A route drawn from approximate positions is not the shape you walked. Precise Location is used only while a session you started is running.</string>
+	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

@@ -4,10 +4,14 @@ import RouteKit
 import RoutePicStore
 import ShapeKit
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct RecordView: View {
 
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.openURL) private var openURL
     @State private var selectedMode: RecordingMode = .run
     @State private var savedActivity: Activity?
     @State private var showsDiscardConfirmation = false
@@ -57,6 +61,35 @@ struct RecordView: View {
     static let lowPowerWarning =
         "Low Power Mode is on, so the route is recorded at lower accuracy to save battery."
 
+    /// A refusal with nothing to press is a dead end: `DESIGN.md` §14.1 asks
+    /// for the deep link, and for precise location asks inside the app first.
+    @ViewBuilder
+    private var remedyButton: some View {
+        switch recorder.remedy {
+        case .openSettings:
+            Button("Open Settings") { openSettings() }
+                .buttonStyle(.borderedProminent)
+        case .askForPreciseLocation:
+            Button("Allow Precise Location") {
+                Task {
+                    if await recorder.askForPreciseLocation() {
+                        await recorder.start(mode: selectedMode)
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private func openSettings() {
+        #if canImport(UIKit)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
+        #endif
+    }
+
     // MARK: - Idle
 
     private var modeChooser: some View {
@@ -66,7 +99,10 @@ struct RecordView: View {
             }
             if recorder.isLowPowerMode { WarningBanner(text: Self.lowPowerWarning) }
             if case .failed(let message) = recorder.phase {
-                WarningBanner(text: message)
+                VStack(spacing: 10) {
+                    WarningBanner(text: message)
+                    remedyButton
+                }
             }
 
             Spacer()
