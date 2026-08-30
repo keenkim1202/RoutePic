@@ -52,6 +52,11 @@ struct RecordView: View {
         }
     }
 
+    /// iOS lowers location accuracy in Low Power Mode on its own
+    /// (`DESIGN.md` §14.1); saying so is the only warning the route will thin.
+    static let lowPowerWarning =
+        "Low Power Mode is on. iOS sends fewer location updates, so this route will be coarser."
+
     // MARK: - Idle
 
     private var modeChooser: some View {
@@ -59,6 +64,7 @@ struct RecordView: View {
             if let warning = environment.startupWarning {
                 WarningBanner(text: warning)
             }
+            if recorder.isLowPowerMode { WarningBanner(text: Self.lowPowerWarning) }
             if case .failed(let message) = recorder.phase {
                 WarningBanner(text: message)
             }
@@ -101,6 +107,7 @@ struct RecordView: View {
 
     private var activeSession: some View {
         VStack(spacing: 0) {
+            if recorder.isLowPowerMode { WarningBanner(text: Self.lowPowerWarning) }
             if let warning = recorder.snapshot?.storageWarning {
                 WarningBanner(text: "Storage problem — the recording is being kept in memory. \(warning)")
             }
