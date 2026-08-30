@@ -187,6 +187,10 @@ extension ActivityRepository {
     }
 
     /// Stores a track that already carries segmentation of its own.
+    ///
+    /// Each declared run is re-split on its own cadence, not the recorder's
+    /// (`Route.splittingGapsByCadence`): a GPX sampled every two minutes is one
+    /// `<trkseg>`, and the constant would make all of it gaps.
     @discardableResult
     public func importRoute(
         _ route: Route,
@@ -194,6 +198,6 @@ extension ActivityRepository {
         now: Date = Date()
     ) throws -> Activity {
         let mode = mode ?? .inferred(from: route.points)
-        return try store(route.splittingGaps(longerThan: mode.gapThreshold), mode: mode, now: now)
+        return try store(route.splittingGapsByCadence(mode: mode), mode: mode, now: now)
     }
 }

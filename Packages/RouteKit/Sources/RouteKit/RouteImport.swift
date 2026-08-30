@@ -128,6 +128,19 @@ extension Route {
     /// the two bridges the breaks marked the other way. Paused stretches are
     /// dropped — no importable format has them.
     public func splittingGaps(longerThan threshold: TimeInterval) -> Route {
+        splittingRuns { _ in threshold }
+    }
+
+    /// Each declared run judged by its own cadence.
+    ///
+    /// One median over the whole track lets a sparse run raise the bar for a
+    /// dense one: nine two-minute intervals set it to 960 s, and a five-minute
+    /// hole in a later dense run is then drawn as movement.
+    public func splittingGapsByCadence(mode: RecordingMode) -> Route {
+        splittingRuns { Route.dropoutThreshold(for: $0, mode: mode) }
+    }
+
+    private func splittingRuns(_ threshold: ([RoutePoint]) -> TimeInterval) -> Route {
         var merged: [RoutePoint] = []
         var segments: [RouteSegment] = []
 
@@ -138,7 +151,7 @@ extension Route {
                 )
             }
             let offset = merged.count
-            let split = Route(points: run, splittingGapsLongerThan: threshold)
+            let split = Route(points: run, splittingGapsLongerThan: threshold(run))
             merged += split.points
             segments += split.segments.map {
                 RouteSegment(
