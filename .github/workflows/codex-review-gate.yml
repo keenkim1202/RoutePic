@@ -161,6 +161,12 @@ jobs:
           THUMBS=$(thumbs_after_head)
           [ "$REVIEWED" = "err" ] && hold_pending "리뷰 목록을 읽지 못했다 — 리뷰 상태 불명"
           [ "$THUMBS" = "err" ] && hold_pending "반응 API 를 읽지 못했다 — 리뷰 상태 불명"
+
+          # 어느 신호로 통과했는지 남긴다. 코덱스는 재리뷰를 받으면 따봉을 떼고
+          # 다시 다는데, 로그에 이 두 수가 없으면 지나간 실행이 리뷰를 보고 통과한
+          # 것인지 아무것도 못 보고 통과한 것인지 밖에서는 구분할 수 없다.
+          echo "이 head 를 본 리뷰=$REVIEWED · head 이후 따봉=$THUMBS"
+
           if [ "$REVIEWED" = "0" ] && [ "$THUMBS" = "0" ]; then
             hold_pending "코덱스 리뷰가 아직 시작되지 않았다"
           fi
