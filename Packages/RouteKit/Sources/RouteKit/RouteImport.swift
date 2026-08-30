@@ -35,6 +35,53 @@ extension Route {
     }
 }
 
+extension Route {
+
+    /// What counts as a dropout in a track this app did not record.
+    ///
+    /// The recorder samples every 5–25 m, so `RecordingMode.gapThreshold` is a
+    /// silence long enough to be a hole. An imported track chose its own
+    /// cadence: a source writing a fix every two minutes is not dropping out
+    /// every two minutes. Measured against the recorder's constant, a five
+    /// kilometre walk sampled that way came back as **zero moving runs and 0 m**
+    /// — every interval was a gap, and distance only accumulates inside a run.
+    ///
+    /// So the bar is this track's own rhythm: an interval far outside its median
+    /// is a hole, and the recorder's threshold is the floor for dense tracks.
+    ///
+    /// A short track cannot describe its own rhythm, so it does not get to:
+    /// with two points the single interval *is* the middle of the list, and a
+    /// track whose only interval is a two-hour hole would rule that hole
+    /// ordinary. Below `minimumIntervals` the mode decides.
+    ///
+    /// The middle of the list, not a lower point in it. A lower point follows
+    /// whichever cadence is *fastest*: a source that logs a dense burst and then
+    /// settles into two-minute steps would have its burst set the bar, and every
+    /// ordinary step after it read as a hole — the original bug, for a
+    /// variable-cadence track. The middle follows the majority instead, and the
+    /// minimum above is what stops a few holes from being that majority.
+    ///
+    /// ponytail: eight medians, and eight intervals to earn them, are judgements
+    /// rather than measurements. Lower and ordinary jitter fragments a route;
+    /// higher and a real dropout is drawn through.
+    public static func dropoutThreshold(
+        for points: [RoutePoint], mode: RecordingMode
+    ) -> TimeInterval {
+        let intervals = zip(points, points.dropFirst()).compactMap { previous, current -> TimeInterval? in
+            guard let start = previous.timestamp, let end = current.timestamp else { return nil }
+            let elapsed = end.timeIntervalSince(start)
+            return elapsed > 0 ? elapsed : nil
+        }.sorted()
+        guard intervals.count >= minimumIntervals else { return mode.gapThreshold }
+
+        let typical = intervals[intervals.count / 2]
+        return max(mode.gapThreshold, typical * 8)
+    }
+
+    /// Enough intervals that a handful of holes cannot become the typical one.
+    static let minimumIntervals = 8
+}
+
 extension RecordingMode {
 
     /// Guesses the mode from the median speed of the moving steps — an average
