@@ -12,6 +12,16 @@ extension ActivityRepository {
         case tooShort(metres: Double)
         case alreadyImported
 
+        /// Whether this was a decision rather than a fault. A 47 m walk to the
+        /// shop was read perfectly well and refused on purpose; reporting it as
+        /// unreadable sends somebody looking for a problem that is not there.
+        public var isDeliberate: Bool {
+            switch self {
+            case .tooShort, .alreadyImported: true
+            case .noTimestamps, .partiallyTimed, .malformedCoordinates: false
+            }
+        }
+
         public var description: String {
             switch self {
             case .noTimestamps:

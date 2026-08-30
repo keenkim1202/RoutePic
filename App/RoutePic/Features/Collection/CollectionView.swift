@@ -288,7 +288,8 @@ struct CollectionView: View {
             do {
                 try environment.repository.importGPX(at: url)
                 imported += 1
-            } catch ActivityRepository.ImportFailure.alreadyImported {
+            } catch let refusal as ActivityRepository.ImportFailure
+                        where refusal.isDeliberate {
                 skipped += 1
             } catch {
                 failures.append("\(url.lastPathComponent): \(error)")
@@ -298,12 +299,12 @@ struct CollectionView: View {
         importProgress = nil
         reload()
 
-        var summary = "Imported \(imported) of \(urls.count)."
-        if skipped > 0 { summary += " \(skipped) were already in your collection." }
-        if let first = failures.first {
-            summary += " \(failures.count) could not be read — \(first)"
-        }
-        importSummary = summary
+        // The same wording Health gets. Two copies drifted apart the moment
+        // `.tooShort` started counting as skipped: this one still said every
+        // skipped file was already in the collection.
+        importSummary = ImportReport.summary(
+            found: urls.count, imported: imported, skipped: skipped, failures: failures
+        )
     }
 
     /// Health already holds years of this. `PLAN.md` P0.1 — the app is empty
@@ -346,7 +347,10 @@ struct CollectionView: View {
                             timeZoneID: workout.timeZoneID
                         )
                         imported += 1
-                    } catch ActivityRepository.ImportFailure.alreadyImported {
+                    } catch let refusal as ActivityRepository.ImportFailure
+                                where refusal.isDeliberate {
+                        // Read fine, refused on purpose — a 47 m walk to the
+                        // shop is not a fault to report as one.
                         skipped += 1
                     } catch {
                         // This workout's problem, not the history's. A route
