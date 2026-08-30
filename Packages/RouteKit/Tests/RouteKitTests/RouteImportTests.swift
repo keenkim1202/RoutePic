@@ -62,6 +62,36 @@ struct RouteImportTests {
         #expect(result.points.count == 20)
     }
 
+    /// One median over the whole track lets the sparse run set the bar for the
+    /// dense one, and the hole inside the dense run is then drawn as movement —
+    /// the inverse of the collapse `dropoutThreshold` was written for.
+    @Test("A dense run keeps its own dropout bar when a sparse run shares the track")
+    func cadenceIsJudgedPerRun() {
+        // 30 fixes two minutes apart, then 12 ten seconds apart with a five
+        // minute hole in the middle of them.
+        var points = (0..<30).map { point(east: Double($0) * 100, seconds: Double($0) * 120) }
+        var clock = 3600.0
+        for i in 0..<12 {
+            clock += (i == 6 ? 300 : 10)
+            points.append(point(east: 3000 + Double(i) * 10, seconds: clock))
+        }
+        let declared = Route(points: points, segments: [
+            RouteSegment(startIndex: 0, endIndex: 30, kind: .moving),
+            RouteSegment(startIndex: 30, endIndex: 30, kind: .gap),
+            RouteSegment(startIndex: 30, endIndex: 42, kind: .moving),
+        ])
+        func gaps(_ route: Route) -> Int { route.segments.filter { $0.kind == .gap }.count }
+
+        let routeWide = declared.splittingGaps(
+            longerThan: Route.dropoutThreshold(for: declared.points, mode: .walk)
+        )
+        let perRun = declared.splittingGapsByCadence(mode: .walk)
+
+        // The sparse run's median raises the bar to 960 s and swallows the hole.
+        #expect(gaps(routeWide) == 1)
+        #expect(gaps(perRun) == 2)
+    }
+
     @Test("Mode is inferred from median step speed", arguments: [
         (1.3, RecordingMode.walk),
         (3.2, RecordingMode.run),

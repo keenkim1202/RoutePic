@@ -300,6 +300,29 @@ struct ExportTests {
         #expect(listing.contains { $0.hasSuffix("activities.json") })
     }
 
+    /// The 0 m collapse `Route.dropoutThreshold` was written for, on the path a
+    /// GPX actually takes: the walking constant calls every two-minute interval
+    /// a dropout, so no moving run survives.
+    @Test("A GPX sampled every two minutes is a walk, not a 0 m track")
+    func sparseGPXKeepsItsDistance() throws {
+        let repository = try makeRepository()
+        let metresPerDegree = ENUProjection.earthRadius * .pi / 180
+        let points = (0..<40).map { i in
+            RoutePoint(
+                latitude: 37.5665 + Double(i) * 100 / metresPerDegree,
+                longitude: 126.9780,
+                altitude: 30,
+                timestamp: StoreFixtures.epoch.addingTimeInterval(Double(i) * 120),
+                horizontalAccuracy: 8,
+                verticalAccuracy: 5
+            )
+        }
+
+        let activity = try repository.importRoute(Route(points: points), mode: .walk)
+
+        #expect(activity.distanceMeters > 3_500)
+    }
+
 }
 
 /// Reads the archive back with the system `unzip`. Tests run on macOS, so this
