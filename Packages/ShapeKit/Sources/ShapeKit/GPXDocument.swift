@@ -30,6 +30,15 @@ public enum GPXDocument {
     /// thing as `SegmentKind.gap` — joining them would draw a route the person
     /// never took.
     public static func parse(_ data: Data) throws -> Route {
+        try parseWithCreator(data).route
+    }
+
+    /// The route plus the `creator` the file declares.
+    ///
+    /// The research tools need it: only the app's own export carries the
+    /// segmentation the app stored, and re-deriving it from a foreign file
+    /// draws a route the app does not.
+    public static func parseWithCreator(_ data: Data) throws -> (route: Route, creator: String?) {
         let parser = XMLParser(data: data)
         let delegate = TrackParser()
         parser.delegate = delegate
@@ -53,12 +62,27 @@ public enum GPXDocument {
             segments.append(RouteSegment(startIndex: start, endIndex: points.count, kind: .moving))
         }
 
-        return Route(points: points, segments: segments)
+        return (Route(points: points, segments: segments), delegate.creator)
     }
 
     public static func parse(contentsOf url: URL) throws -> Route {
         try parse(Data(contentsOf: url))
     }
+
+    public static func parseWithCreator(contentsOf url: URL) throws -> (route: Route, creator: String?) {
+        try parseWithCreator(Data(contentsOf: url))
+    }
+
+    /// What `write` stamps on the app's own export.
+    public static let appCreator = "RoutePic"
+
+    /// Said by every research tool handed a file the app did not write.
+    public static let foreignExportWarning = """
+        this GPX was not written by RoutePic, so its <trkseg> breaks are the \
+        recorder's rather than the segmentation the app stored — a dropout the \
+        app cuts may be bridged here. Export the activity from the app to judge \
+        the route it actually draws.
+        """
 
     public static func write(_ route: Route, creator: String = "RoutePic") -> String {
         var xml = """
@@ -92,6 +116,7 @@ public enum GPXDocument {
 
     private final class TrackParser: NSObject, XMLParserDelegate {
         var runs: [[RoutePoint]] = []
+        var creator: String?
         private var current: [RoutePoint] = []
         private var pending: RoutePoint?
         private var text = ""
@@ -123,6 +148,8 @@ public enum GPXDocument {
         ) {
             text = ""
             switch element {
+            case "gpx":
+                creator = attributes["creator"]
             case "trkseg":
                 closeSegment()
             case "trkpt":

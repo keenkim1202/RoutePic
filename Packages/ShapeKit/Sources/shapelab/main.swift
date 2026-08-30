@@ -108,7 +108,13 @@ func configuration(from options: Options) -> ShapePipeline.Configuration {
 func loadRoute(_ path: String) -> Route {
     let url = URL(fileURLWithPath: path)
     do {
-        return try GPXDocument.parse(contentsOf: url)
+        let (route, creator) = try GPXDocument.parseWithCreator(contentsOf: url)
+        if creator != GPXDocument.appCreator {
+            FileHandle.standardError.write(
+                Data("shapelab: \(GPXDocument.foreignExportWarning)\n".utf8)
+            )
+        }
+        return route
     } catch {
         fail("could not read \(path): \(error)")
     }
@@ -222,7 +228,11 @@ func fingerprintCommand(_ options: Options) {
     print(String(decoding: json, as: UTF8.self))
 
     if fingerprint.isDegenerate {
-        print("// degenerate: near-straight route — DESIGN.md §4.4 blocks generation")
+        // stderr, not stdout: the documented recipe redirects this command to
+        // a file and feeds it to a decoder, and a trailing comment is not JSON.
+        FileHandle.standardError.write(
+            Data("degenerate: near-straight route — DESIGN.md §4.4 blocks generation\n".utf8)
+        )
     }
 }
 

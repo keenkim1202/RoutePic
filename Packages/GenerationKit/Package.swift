@@ -18,6 +18,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../ShapeKit"),
+        .package(path: "../RouteKit"),
         .package(
             url: "https://github.com/apple/ml-stable-diffusion.git",
             from: "1.1.0"
@@ -32,6 +33,9 @@ let package = Package(
                 .product(name: "StableDiffusion", package: "ml-stable-diffusion"),
             ]
         ),
+        // The spike harness, in the repository this time: the last one lived
+        // outside it and its strength knob had to be rebuilt from scratch.
+        .executableTarget(name: "genlab", dependencies: ["GenerationKit", "RouteKit", "ShapeKit"]),
         .testTarget(name: "GenerationKitTests", dependencies: ["GenerationKit"]),
         .testTarget(name: "GenerationCoreMLTests", dependencies: ["GenerationCoreML"]),
     ]
