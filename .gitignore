@@ -76,3 +76,6 @@ Corpus/
 *.mlmodelc/
 *.mlpackage/
 Models/
+
+# Local sweep environment — multi-GB, rebuilt from OnDevice/README.md
+.venv-sweep/
