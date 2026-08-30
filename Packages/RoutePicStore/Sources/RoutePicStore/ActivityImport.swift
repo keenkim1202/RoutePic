@@ -38,6 +38,9 @@ extension ActivityRepository {
     public func importRoute(
         _ points: [RoutePoint],
         mode: RecordingMode? = nil,
+        startedAt: Date? = nil,
+        endedAt: Date? = nil,
+        timeZoneID: String? = nil,
         placeName: String? = nil,
         privacyTrimMeters: Int = Int(RouteTrimmer.defaultTrimMeters),
         now: Date = Date()
@@ -46,6 +49,9 @@ extension ActivityRepository {
         return try store(
             Route(points: points, splittingGapsLongerThan: mode.gapThreshold),
             mode: mode,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            timeZoneID: timeZoneID,
             placeName: placeName,
             privacyTrimMeters: privacyTrimMeters,
             now: now
@@ -57,13 +63,21 @@ extension ActivityRepository {
     private func store(
         _ route: Route,
         mode: RecordingMode,
+        startedAt givenStart: Date? = nil,
+        endedAt givenEnd: Date? = nil,
+        timeZoneID: String? = nil,
         placeName: String? = nil,
         privacyTrimMeters: Int = Int(RouteTrimmer.defaultTrimMeters),
         now: Date
     ) throws -> Activity {
-        guard let startedAt = route.points.first?.timestamp,
-              let endedAt = route.points.last?.timestamp
+        guard let firstFix = route.points.first?.timestamp,
+              let lastFix = route.points.last?.timestamp
         else { throw ImportFailure.noTimestamps }
+        // A source that knows when the activity began is believed over its own
+        // coordinates: Health starts a route after the workout and can stop it
+        // early, and the difference puts a run under the wrong day.
+        let startedAt = givenStart ?? firstFix
+        let endedAt = givenEnd ?? lastFix
         // Checking the two ends is not enough: one untimed point in the middle
         // blinds the intervals on both sides of it, and the dropout there is
         // drawn as a straight line — the artifact this whole path exists to
@@ -85,7 +99,7 @@ extension ActivityRepository {
         guard statistics.distanceMeters >= Self.minimumImportDistance else {
             throw ImportFailure.tooShort(metres: statistics.distanceMeters)
         }
-        guard try !isAlreadyStored(route, startedAt: startedAt) else {
+        guard try !isAlreadyStored(route, firstFix: firstFix) else {
             throw ImportFailure.alreadyImported
         }
 
@@ -94,6 +108,7 @@ extension ActivityRepository {
             mode: mode,
             startedAt: startedAt,
             endedAt: endedAt,
+            timeZoneID: timeZoneID,
             placeName: placeName,
             privacyTrimMeters: privacyTrimMeters,
             now: now
@@ -106,12 +121,25 @@ extension ActivityRepository {
     /// two activities beginning in the same second — which is why the export
     /// puts the id in the file name — and matching on time alone would drop all
     /// but one of them when that backup is restored. The route decides.
-    func isAlreadyStored(_ route: Route, startedAt: Date) throws -> Bool {
-        let lower = startedAt.addingTimeInterval(-1)
-        let upper = startedAt.addingTimeInterval(1)
+    /// Anchored on the first fix, which every source agrees on, rather than on
+    /// the stored start, which they do not: a GPX row starts at its first fix
+    /// and a Health row at the workout, minutes earlier. Matching on the stored
+    /// value re-imports a route the collection already holds.
+    func isAlreadyStored(_ route: Route, firstFix: Date) throws -> Bool {
+        // Two ways to be the same activity, and both are needed. Containment
+        // catches a source that dated it earlier than its first fix, which
+        // Health does. The second matches a stored start within a second,
+        // because `GPXDocument.write` drops fractional seconds — re-importing
+        // an export gives a first fix slightly *before* the stored start, and
+        // containment alone would let it in as a duplicate.
+        let lower = firstFix.addingTimeInterval(-1)
+        let upper = firstFix.addingTimeInterval(1)
         let sameMoment = try context.fetch(
             FetchDescriptor<Activity>(
-                predicate: #Predicate { $0.startedAt > lower && $0.startedAt < upper }
+                predicate: #Predicate {
+                    ($0.startedAt <= firstFix && $0.endedAt >= firstFix)
+                        || ($0.startedAt > lower && $0.startedAt < upper)
+                }
             )
         )
         let identity = Self.gpxIdentity(route)

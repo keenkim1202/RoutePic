@@ -160,6 +160,10 @@ public final class ActivityRepository {
         mode: RecordingMode,
         startedAt: Date,
         endedAt: Date,
+        /// The zone the activity happened in. `nil` means this device's, which
+        /// is right for a recording made here and wrong for one imported from
+        /// somewhere else — the collection groups months by this.
+        timeZoneID: String? = nil,
         placeName: String? = nil,
         note: String? = nil,
         privacyTrimMeters: Int = Int(RouteTrimmer.defaultTrimMeters),
@@ -169,6 +173,7 @@ public final class ActivityRepository {
             mode: mode,
             startedAt: startedAt,
             endedAt: endedAt,
+            timeZoneID: timeZoneID ?? TimeZone.current.identifier,
             statistics: ActivityStatistics.compute(for: route),
             route: route,
             placeName: placeName,

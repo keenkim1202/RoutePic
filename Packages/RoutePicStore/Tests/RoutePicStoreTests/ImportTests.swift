@@ -9,6 +9,97 @@ import Testing
 @Suite("Import")
 struct ImportTests {
 
+    /// Health starts a route after the workout and can stop it early. Taking
+    /// the dates from the coordinates puts a run that began at 23:50 under the
+    /// next day, and in the wrong month section at a boundary.
+    @Test("A source's own start and end beat its first and last fix")
+    func givenBoundsWinOverFixTimestamps() throws {
+        let repository = try makeRepository()
+        let route = StoreFixtures.route(points: 60)
+        let firstFix = try #require(route.points.first?.timestamp)
+        let lastFix = try #require(route.points.last?.timestamp)
+
+        let activity = try repository.importRoute(
+            route.points,
+            mode: .run,
+            startedAt: firstFix.addingTimeInterval(-600),
+            endedAt: lastFix.addingTimeInterval(300)
+        )
+
+        #expect(activity.startedAt == firstFix.addingTimeInterval(-600))
+        #expect(activity.endedAt == lastFix.addingTimeInterval(300))
+    }
+
+    /// Nothing given, nothing invented: a GPX has only its fixes.
+    @Test("Without bounds the fixes still decide")
+    func fixTimestampsRemainTheDefault() throws {
+        let repository = try makeRepository()
+        let route = StoreFixtures.route(points: 60)
+        let activity = try repository.importRoute(route.points, mode: .walk)
+
+        #expect(activity.startedAt == route.points.first?.timestamp)
+        #expect(activity.endedAt == route.points.last?.timestamp)
+    }
+
+    /// A GPX row starts at its first fix and a Health row at the workout,
+    /// minutes earlier. Matching on the stored start re-imports a route the
+    /// collection already holds.
+    @Test("The same route is not imported twice because a source dated it differently")
+    func differentBoundsAreStillTheSameRoute() throws {
+        let repository = try makeRepository()
+        let route = StoreFixtures.route(points: 60)
+        let firstFix = try #require(route.points.first?.timestamp)
+
+        _ = try repository.importRoute(route.points, mode: .run)
+
+        #expect(throws: ActivityRepository.ImportFailure.alreadyImported) {
+            try repository.importRoute(
+                route.points,
+                mode: .run,
+                startedAt: firstFix.addingTimeInterval(-180),
+                endedAt: try #require(route.points.last?.timestamp).addingTimeInterval(60)
+            )
+        }
+    }
+
+    /// `Activity.timeZoneID` is what the collection groups months by, so a run
+    /// taken abroad must keep the zone it happened in.
+    @Test("An imported activity keeps the zone it was recorded in")
+    func importedZoneIsKept() throws {
+        let repository = try makeRepository()
+        let activity = try repository.importRoute(
+            StoreFixtures.route(points: 60).points, mode: .run, timeZoneID: "Asia/Seoul"
+        )
+        #expect(activity.timeZoneID == "Asia/Seoul")
+
+        // Nothing given: a recording made here belongs to here.
+        let local = try repository.importRoute(
+            StoreFixtures.route(points: 40).points, mode: .walk
+        )
+        #expect(local.timeZoneID == TimeZone.current.identifier)
+    }
+
+    /// `GPXDocument.write` drops fractional seconds, so a re-imported export
+    /// has a first fix slightly *before* the stored start. Matching only on an
+    /// interval that contains the fix would let the whole backup back in.
+    @Test("A re-imported export is not a duplicate despite a truncated timestamp")
+    func truncatedTimestampIsStillTheSameRoute() throws {
+        let repository = try makeRepository()
+        let route = StoreFixtures.route(points: 60)
+        // Stored with milliseconds, as a recording is.
+        let precise = route.points.map { point -> RoutePoint in
+            var moved = point
+            moved.timestamp = point.timestamp?.addingTimeInterval(0.7)
+            return moved
+        }
+        _ = try repository.importRoute(precise, mode: .run)
+
+        // Read back with whole seconds, as a GPX round trip gives.
+        #expect(throws: ActivityRepository.ImportFailure.alreadyImported) {
+            try repository.importRoute(route.points, mode: .run)
+        }
+    }
+
     private func makeRepository() throws -> ActivityRepository {
         ActivityRepository(
             context: ModelContext(try ActivityRepository.inMemoryContainer()),

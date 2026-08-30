@@ -40,8 +40,9 @@ extension RecordingMode {
     /// Guesses the mode from the median speed of the moving steps — an average
     /// is dragged between modes by stops and dropouts.
     ///
-    /// ponytail: a speed heuristic, so a slow cycle reads as a run. Replace it
-    /// with the source's own activity type where one exists (HealthKit has one).
+    /// A guess, so a slow cycle reads as a run. Only for sources that say
+    /// nothing about what they are; Health says, and
+    /// `init(workoutActivityType:)` is used there instead.
     public static func inferred(from points: [RoutePoint]) -> RecordingMode {
         guard points.count > 1 else { return .walk }
 
@@ -104,3 +105,29 @@ extension Route {
         return Route(points: merged, segments: segments)
     }
 }
+
+#if canImport(HealthKit)
+import HealthKit
+
+extension RecordingMode {
+
+    /// The mode Health already recorded, rather than one guessed from speed.
+    /// `nil` for anything with no shape to draw — a swim or a treadmill run is
+    /// a real workout that would become a row rendering nothing.
+    public init?(workoutActivityType type: HKWorkoutActivityType) {
+        switch type {
+        case .walking, .hiking:
+            self = .walk
+        case .running:
+            self = .run
+        // Cycling sits closer to driving than to running on every axis this
+        // app uses — sampling distance, speed ceiling, and no auto-pause at
+        // junctions. `PLAN.md` has no cycling mode of its own.
+        case .cycling:
+            self = .drive
+        default:
+            return nil
+        }
+    }
+}
+#endif
