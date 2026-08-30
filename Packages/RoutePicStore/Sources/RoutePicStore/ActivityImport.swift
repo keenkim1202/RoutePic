@@ -56,8 +56,14 @@ extension ActivityRepository {
         now: Date = Date()
     ) throws -> Activity {
         let mode = mode ?? .inferred(from: points)
+        // The source's own cadence, not the recorder's. See
+        // `Route.dropoutThreshold` — the constant turns a sparsely sampled
+        // track into nothing but gaps.
         return try store(
-            Route(points: points, splittingGapsLongerThan: mode.gapThreshold),
+            Route(
+                points: points,
+                splittingGapsLongerThan: Route.dropoutThreshold(for: points, mode: mode)
+            ),
             mode: mode,
             startedAt: startedAt,
             endedAt: endedAt,
