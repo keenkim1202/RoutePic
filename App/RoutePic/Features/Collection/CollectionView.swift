@@ -401,17 +401,15 @@ struct ActivityTile: View {
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        // Once per evaluation. Reading it twice decodes the whole polyline
-        // twice for every visible card, on the scrolling path.
-        //
-        // ponytail: still one decode per card per update. Cache it on the row
-        // if a long collection ever feels slow.
-        let readable = activity.isRouteReadable
+        // Through the cache: the grid re-evaluates every visible tile on each
+        // update, and both of these used to decode from scratch each time.
+        let readable = environment.renderCache.summary(for: activity).isReadable
 
         return ZStack {
             if let artwork = activity.artworks.first(where: \.isSelected) ?? activity.artworks.first,
-               let data = try? environment.artworkStore.data(named: artwork.thumbnailFileName),
-               let image = PlatformImage.from(data) {
+               let image = environment.renderCache.image(
+                   named: artwork.thumbnailFileName, from: environment.artworkStore
+               ) {
                 image.resizable().scaledToFill()
             } else {
                 RouteThumbnail(activity: activity)
