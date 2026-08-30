@@ -10,7 +10,8 @@ public enum ImportReport {
 
     /// - Parameters:
     ///   - found: tracks that actually had coordinates, not candidates.
-    ///   - failures: one message per track that could not be read.
+    ///   - skipped: tracks refused on purpose — too short, or already held.
+    ///   - failures: one message per track that genuinely could not be read.
     public static func summary(
         found: Int, imported: Int, skipped: Int, failures: [String]
     ) -> String {
@@ -32,7 +33,9 @@ public enum ImportReport {
         }
 
         var summary = "Imported \(imported) of \(found)."
-        if skipped > 0 { summary += " \(skipped) were already in your collection." }
+        if skipped > 0 {
+            summary += " \(skipped) were skipped — already here, or too short to draw."
+        }
         if let first = failures.first {
             summary += " \(failures.count) could not be read — \(first)"
         }
