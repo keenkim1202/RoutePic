@@ -18,6 +18,8 @@ struct ShareableCard: Identifiable {
     var artwork: CGImage?
     var mapSnapshotIsUnsafe: Bool = false
     var timeZone: TimeZone = .current
+    /// What the shape reads as, from geometry alone. The headline on the card.
+    var subject: String?
     var fileURL: URL?
 
     init(
@@ -28,7 +30,8 @@ struct ShareableCard: Identifiable {
         placeName: String?,
         artwork: CGImage?,
         mapSnapshotIsUnsafe: Bool,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        subject: String? = nil
     ) {
         self.shape = shape
         self.statistics = statistics
@@ -38,6 +41,7 @@ struct ShareableCard: Identifiable {
         self.artwork = artwork
         self.mapSnapshotIsUnsafe = mapSnapshotIsUnsafe
         self.timeZone = timeZone
+        self.subject = subject
     }
 
     init(fileURL: URL) {
@@ -175,6 +179,7 @@ struct ShareCardSheet: View {
                 placeName: card.placeName,
                 contents: contents,
                 artwork: card.artwork,
+                subject: card.subject,
                 timeZone: card.timeZone
             )
             rendered = image

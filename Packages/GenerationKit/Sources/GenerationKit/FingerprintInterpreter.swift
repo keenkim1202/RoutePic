@@ -27,6 +27,16 @@ public struct FingerprintInterpreter: ShapeInterpreter {
         layout: String,
         fingerprint: ShapeFingerprint
     ) async throws -> ShapeInterpretation {
+        read(fingerprint)
+    }
+
+    /// The reading, from the geometry alone.
+    ///
+    /// `interpret` never looked at the sheet — this is the whole of it. Kept
+    /// separate because the app's most distinctive answer, what a route looks
+    /// like and why, was reachable only through the generation path that owns
+    /// the sheet: no model, no pack and no network are needed to say it.
+    public func read(_ fingerprint: ShapeFingerprint) -> ShapeInterpretation {
         let candidates = Self.candidates(for: fingerprint)
 
         return ShapeInterpretation(
