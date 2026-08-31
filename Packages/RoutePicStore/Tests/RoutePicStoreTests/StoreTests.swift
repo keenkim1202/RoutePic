@@ -171,9 +171,14 @@ struct ActivityRepositoryTests {
         _ = try attach(to: activity, using: repository)
         let second = try attach(to: activity, using: repository)
 
-        try repository.select(second)
+        let before = activity.updatedAt
+        try repository.select(second, now: before.addingTimeInterval(60))
         #expect(activity.artworks.count(where: \.isSelected) == 1)
         #expect(second.isSelected)
+        // Everything derived from an activity is keyed on this stamp. Without
+        // it a collection tile keeps drawing and naming the picture that is no
+        // longer chosen.
+        #expect(activity.updatedAt > before)
     }
 
     @Test("Deleting an activity removes its artwork rows and files")

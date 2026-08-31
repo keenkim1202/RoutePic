@@ -1,4 +1,5 @@
 import Foundation
+import GenerationKit
 import RouteKit
 import RoutePicStore
 import ShapeKit
@@ -19,6 +20,9 @@ final class RouteRenderCache {
     struct Tile: Sendable {
         var shape: OrientedShape?
         var isReadable: Bool
+        /// What the shape reads as. From the same fingerprint the drawing came
+        /// from, so it costs nothing the tile was not already paying.
+        var subject: String?
     }
 
     private var tiles: [Key: Tile] = [:]
@@ -65,7 +69,7 @@ final class RouteRenderCache {
     func tile(for activity: Activity, canvasSize: Double) async -> Tile {
         let key = Key(activity)
         if let hit = tiles[key] { return hit }
-        guard !Task.isCancelled else { return Tile(shape: nil, isReadable: true) }
+        guard !Task.isCancelled else { return Tile(shape: nil, isReadable: true, subject: nil) }
 
         let value = await derive(
             activity.storedRoute, mode: activity.mode,
@@ -83,12 +87,22 @@ final class RouteRenderCache {
         _ stored: StoredRoute, mode: RecordingMode, trim: Double, canvasSize: Double
     ) async -> Tile {
         guard let route = try? stored.decode() else {
-            return Tile(shape: nil, isReadable: false)
+            return Tile(shape: nil, isReadable: false, subject: nil)
         }
-        let shape = try? DerivedRoute.make(
+        guard let shape = try? DerivedRoute.make(
             from: route, mode: mode, trimMeters: trim,
             purpose: .display, canvasSize: canvasSize
-        ).shape.canonical
-        return Tile(shape: shape, isReadable: true)
+        ).shape.canonical else {
+            return Tile(shape: nil, isReadable: true, subject: nil)
+        }
+        // The fallback, not nil: a straight commute proposes nothing, and a
+        // tile that says nothing is the feature disappearing on the most
+        // common route there is.
+        let reading = FingerprintInterpreter().read(shape.fingerprint)
+        return Tile(
+            shape: shape, isReadable: true,
+            subject: reading.candidates.first?.subject
+                ?? FingerprintInterpreter.unrecognised.subject
+        )
     }
 }

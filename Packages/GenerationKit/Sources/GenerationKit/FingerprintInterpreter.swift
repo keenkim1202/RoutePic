@@ -122,6 +122,16 @@ public struct FingerprintInterpreter: ShapeInterpreter {
         )
     }
 
+    /// What to say when the geometry proposed nothing.
+    ///
+    /// `DESIGN.md` §4.4 — a route that matches nothing is told so. Silence
+    /// reads as the app having failed to think of anything, and a straight
+    /// commute is the most common route there is.
+    public static let unrecognised = (
+        subject: "A route of its own",
+        why: "This one did not settle into a shape RoutePic knows."
+    )
+
     /// What to draw when nothing is proposed. `DESIGN.md` §4.4 — the shape is
     /// still the subject, just not as a thing with a name.
     static func abstract(for fingerprint: ShapeFingerprint) -> String {

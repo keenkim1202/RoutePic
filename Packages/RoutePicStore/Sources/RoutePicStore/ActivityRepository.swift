@@ -274,14 +274,20 @@ public final class ActivityRepository {
     /// The flags go back if the write does not land. Left changed, the hero and
     /// the accessibility description show a selection the disk never took, and
     /// the next unrelated save commits it.
-    public func select(_ artwork: Artwork) throws {
+    public func select(_ artwork: Artwork, now: Date = Date()) throws {
         guard let activity = artwork.activity else { return }
         let before = activity.artworks.map { ($0, $0.isSelected) }
+        let stamp = activity.updatedAt
         for other in activity.artworks { other.isSelected = (other.id == artwork.id) }
+        // Choosing a different picture changes the activity, and everything
+        // derived from it is keyed on this: without the stamp a collection tile
+        // keeps drawing and naming the picture that is no longer chosen.
+        activity.updatedAt = now
         do {
             try context.save()
         } catch {
             for (each, was) in before { each.isSelected = was }
+            activity.updatedAt = stamp
             throw error
         }
     }

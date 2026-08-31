@@ -319,8 +319,10 @@ public struct CardRenderer: Sendable {
         size: CGSize, layout: Layout
     ) {
         let width = size.width * (1 - layout.textInset * 2)
-        let heading = subject ?? Self.unnamedSubject
-        let sentence = reason ?? Self.unnamedReason
+        // Drawn, not decided. What to say about a route the geometry could not
+        // name is `FingerprintInterpreter`'s call, and this package cannot see
+        // it — two copies of one sentence drift apart without exception.
+        guard let heading = subject, let sentence = reason else { return }
 
         let title = Self.wrap(
             heading, size: layout.subjectSize, minimumSize: 44,
@@ -356,13 +358,6 @@ public struct CardRenderer: Sendable {
         let lineHeight = layout.reasonSize * 1.2
         return (top, max(1, min(layout.reasonLines, Int(room / lineHeight))))
     }
-
-    /// `DESIGN.md` §4.4 — a route that matches nothing is said to match
-    /// nothing. Naming it "abstract" would claim a reading the geometry
-    /// refused to give.
-    public static let unnamedSubject = "A route of its own"
-    public static let unnamedReason =
-        "This one did not settle into a shape RoutePic knows."
 
     private func drawStatistics(
         in context: CGContext,
