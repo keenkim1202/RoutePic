@@ -1,4 +1,5 @@
 import CoreGraphics
+import GenerationKit
 import RouteKit
 import RoutePicStore
 import ShapeKit
@@ -19,6 +20,7 @@ struct ActivityDetailView: View {
     @State private var showsDeleteConfirmation = false
     @State private var showsPictureDeleteConfirmation = false
     @State private var errorMessage: String?
+    @State private var reading: ShapeInterpretation?
 
     private var selectedArtwork: Artwork? {
         activity.artworks.first(where: \.isSelected) ?? activity.artworks.first
@@ -29,7 +31,11 @@ struct ActivityDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 hero
                 if activity.artworks.count > 1 { artworkPicker }
-                if let artwork = selectedArtwork { interpretation(artwork) }
+                if let artwork = selectedArtwork {
+                    interpretation(artwork)
+                } else if let reading {
+                    shapeReading(reading)
+                }
                 statistics
                 // One decode for both, and for the sentence inside the notice.
                 let route = activity.routeSummary()
@@ -42,7 +48,16 @@ struct ActivityDetailView: View {
         .navigationTitle(activity.mode.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .task { note = activity.note ?? "" }
+        .task {
+            note = activity.note ?? ""
+            // The route is read off the model on this actor; the pipeline that
+            // follows is not, because it is the same work that stalled the
+            // collection grid.
+            guard let route = try? activity.route() else { return }
+            reading = await Self.read(
+                route, mode: activity.mode, trim: Double(activity.privacyTrimMeters)
+            )
+        }
         .sheet(item: $shareItem) { ShareCardSheet(card: $0) }
         .alert(
             "Something went wrong",
@@ -157,6 +172,39 @@ struct ActivityDetailView: View {
             onChange()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// What the shape reads as, with no picture involved.
+    ///
+    /// `FingerprintInterpreter` works from the fingerprint alone, so this is
+    /// the same sentence a generated picture would have carried — available
+    /// without a model pack, a network or a wait. `nonisolated` so the shape
+    /// pipeline leaves the main actor while inheriting its cancellation.
+    nonisolated static func read(
+        _ route: Route, mode: RecordingMode, trim: Double
+    ) async -> ShapeInterpretation? {
+        guard let derived = try? DerivedRoute.make(
+            from: route, mode: mode, trimMeters: trim, purpose: .display
+        ) else { return nil }
+        return FingerprintInterpreter().read(derived.shape.canonical.fingerprint)
+    }
+
+    @ViewBuilder
+    private func shapeReading(_ interpretation: ShapeInterpretation) -> some View {
+        if let candidate = interpretation.candidates.first {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(candidate.headline).font(.title3.weight(.semibold))
+                Text(candidate.why).font(.subheadline).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        } else if !interpretation.recognizable {
+            // `DESIGN.md` §4.4 would rather say a route does not read as
+            // anything than dress a commute up as an animal. Silence here
+            // looks like the app failed to think of something.
+            Text("This route does not read as a shape — it is close to a straight line.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -315,7 +363,14 @@ struct ActivityDetailView: View {
                 placeName: activity.placeName,
                 artwork: artworkImage,
                 mapSnapshotIsUnsafe: derived.mapSnapshotIsUnsafe,
-                timeZone: TimeZone(identifier: activity.timeZoneID) ?? .current
+                timeZone: TimeZone(identifier: activity.timeZoneID) ?? .current,
+                // From the share derivation, never the display one (§8.4).
+                // They agree today — `purpose` decides only whether a map
+                // snapshot is safe — and reusing the other would go stale the
+                // day it stops deciding only that.
+                subject: FingerprintInterpreter()
+                    .read(derived.shape.canonical.fingerprint)
+                    .candidates.first?.headline
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -356,5 +411,14 @@ extension CGImage {
             let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else { return nil }
         return image
+    }
+}
+
+extension SubjectCandidate {
+    /// Sentence case. The subjects are written as fragments — "curled sleeping
+    /// cat" — because Stage 2 wanted them inside a prompt, and a headline is
+    /// where they are read now.
+    var headline: String {
+        subject.prefix(1).uppercased() + subject.dropFirst()
     }
 }

@@ -98,6 +98,7 @@ public struct CardRenderer: Sendable {
         placeName: String?,
         contents: Contents = .default,
         artwork: CGImage? = nil,
+        subject: String? = nil,
         timeZone: TimeZone = .current
     ) throws -> CGImage {
         let size = aspect.size
@@ -136,7 +137,8 @@ public struct CardRenderer: Sendable {
         drawStatistics(
             in: context, size: size, artRect: artRect,
             statistics: statistics, mode: mode, date: date,
-            placeName: placeName, contents: contents, timeZone: timeZone
+            placeName: placeName, contents: contents, subject: subject,
+            timeZone: timeZone
         )
 
         guard let image = context.makeImage() else { throw Failure.contextCreationFailed }
@@ -210,9 +212,14 @@ public struct CardRenderer: Sendable {
         date: Date,
         placeName: String?,
         contents: Contents,
+        subject: String?,
         timeZone: TimeZone
     ) {
         var lines: [(String, CGFloat)] = []
+
+        // The headline. What the route looks like is the thing worth sharing;
+        // the distance is what every other tracker already shows.
+        if let subject { lines.append((subject, 58)) }
 
         if contents.showsDistance {
             lines.append((CardFormatter.distance(statistics.distanceMeters), 96))
