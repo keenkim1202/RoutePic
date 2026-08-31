@@ -20,6 +20,9 @@ struct ShareableCard: Identifiable {
     var timeZone: TimeZone = .current
     /// What the shape reads as, from geometry alone. The headline on the card.
     var subject: String?
+    /// Why it reads that way. The card led with distance and left this out —
+    /// the one sentence no other tracker has.
+    var reason: String?
     var fileURL: URL?
 
     init(
@@ -31,7 +34,8 @@ struct ShareableCard: Identifiable {
         artwork: CGImage?,
         mapSnapshotIsUnsafe: Bool,
         timeZone: TimeZone,
-        subject: String? = nil
+        subject: String? = nil,
+        reason: String? = nil
     ) {
         self.shape = shape
         self.statistics = statistics
@@ -42,6 +46,7 @@ struct ShareableCard: Identifiable {
         self.mapSnapshotIsUnsafe = mapSnapshotIsUnsafe
         self.timeZone = timeZone
         self.subject = subject
+        self.reason = reason
     }
 
     init(fileURL: URL) {
@@ -59,6 +64,7 @@ struct ShareCardSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var aspect: CardRenderer.Aspect = .square
+    @State private var palette: CardRenderer.Palette = .dusk
     @State private var contents = CardRenderer.Contents.default
     @State private var rendered: CGImage?
     @State private var exportURL: URL?
@@ -117,6 +123,12 @@ struct ShareCardSheet: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
+                Picker("Colours", selection: $palette) {
+                    ForEach(CardRenderer.Palette.all) { Text($0.name).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Distance", isOn: $contents.showsDistance)
                     Toggle("Time", isOn: $contents.showsDuration)
@@ -164,14 +176,14 @@ struct ShareCardSheet: View {
     }
 
     private var renderKey: String {
-        "\(aspect.rawValue)-\(contents.showsDistance)-\(contents.showsDuration)"
+        "\(aspect.rawValue)-\(palette.name)-\(contents.showsDistance)-\(contents.showsDuration)"
             + "-\(contents.showsDate)-\(contents.showsRouteLine)-\(contents.showsPlaceName)"
     }
 
     private func render() {
         guard let shape = card.shape else { return }
         do {
-            let image = try CardRenderer(aspect: aspect).render(
+            let image = try CardRenderer(aspect: aspect, palette: palette).render(
                 shape: shape,
                 statistics: card.statistics,
                 mode: card.mode,
@@ -180,6 +192,7 @@ struct ShareCardSheet: View {
                 contents: contents,
                 artwork: card.artwork,
                 subject: card.subject,
+                reason: card.reason,
                 timeZone: card.timeZone
             )
             rendered = image

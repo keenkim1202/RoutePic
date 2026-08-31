@@ -198,13 +198,17 @@ struct ActivityDetailView: View {
                 Text(candidate.why).font(.subheadline).foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
-        } else if !interpretation.recognizable {
-            // `DESIGN.md` §4.4 would rather say a route does not read as
-            // anything than dress a commute up as an animal. Silence here
-            // looks like the app failed to think of something.
-            Text("This route does not read as a shape — it is close to a straight line.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        } else {
+            // `DESIGN.md` §4.4 would rather say a route matches nothing than
+            // dress a commute up as an animal. Not "close to a straight line":
+            // a route can match nothing without being straight, and the card
+            // and this screen have to say the same thing about it.
+            VStack(alignment: .leading, spacing: 6) {
+                Text(CardRenderer.unnamedSubject).font(.title3.weight(.semibold))
+                Text(CardRenderer.unnamedReason)
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -351,6 +355,8 @@ struct ActivityDetailView: View {
             // from the display path — that is how a stale, less-trimmed route
             // would leak after the user tightened the setting.
             let derived = try DerivedRoute.make(from: activity, purpose: .share)
+            let shared = FingerprintInterpreter()
+                .read(derived.shape.canonical.fingerprint).candidates.first
             let artworkImage = selectedArtwork
                 .flatMap { try? environment.artworkStore.data(named: $0.imageFileName) }
                 .flatMap(CGImage.fromPNG)
@@ -368,9 +374,8 @@ struct ActivityDetailView: View {
                 // They agree today — `purpose` decides only whether a map
                 // snapshot is safe — and reusing the other would go stale the
                 // day it stops deciding only that.
-                subject: FingerprintInterpreter()
-                    .read(derived.shape.canonical.fingerprint)
-                    .candidates.first?.headline
+                subject: shared?.headline,
+                reason: shared?.why
             )
         } catch {
             errorMessage = error.localizedDescription
