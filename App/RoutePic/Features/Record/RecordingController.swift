@@ -54,6 +54,13 @@ final class RecordingController {
     /// read once: it can be switched on mid-run, and iOS gives no other sign.
     private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
+    /// When a fix last arrived, accepted or not.
+    ///
+    /// Arrival, not acceptance: a phone standing still keeps receiving fixes
+    /// while `minimumStoredDistance` stores none of them, so "nothing was added
+    /// to the route" would call a red light a tunnel (`DESIGN.md` §14.1).
+    private(set) var lastFixAt: Date?
+
     private(set) var snapshot: RecordingSession.Snapshot?
     private(set) var mode: RecordingMode = .run
 
@@ -105,6 +112,9 @@ final class RecordingController {
         // back from Settings with permission granted would otherwise still
         // offer the button that sent you there.
         remedy = nil
+        // Cleared, not carried: the previous session's last fix would make a
+        // fresh one read as a dropout from its first second.
+        lastFixAt = nil
         streamEnded = false
         handlingInterruption = false
         pendingFixes = []
@@ -153,6 +163,12 @@ final class RecordingController {
         while !pendingFixes.isEmpty {
             await session.ingest(pendingFixes.removeFirst(), now: Date())
         }
+        // Counted from here, not from the top of `start`: the authorization
+        // prompt sits in between, and a person who took two minutes over it
+        // would arrive at a running session already reading as a dropout.
+        // Set even though fixes may have arrived, so a session that never gets
+        // one warns too.
+        if lastFixAt == nil { lastFixAt = Date() }
         phase = .running
         snapshot = await session.snapshot()
 
@@ -192,6 +208,7 @@ final class RecordingController {
     }
 
     private func handle(_ fix: LocationFix) async {
+        lastFixAt = Date()
         guard let session else { return }
         guard phase != .starting else {
             pendingFixes.append(fix)
@@ -211,6 +228,8 @@ final class RecordingController {
     func resume() async {
         guard let session, phase == .paused else { return }
         await session.resume(now: Date())
+        // A long pause is not a dropout, and the clock restarts with the run.
+        lastFixAt = Date()
         phase = .running
         snapshot = await session.snapshot()
     }
@@ -322,6 +341,14 @@ final class RecordingController {
         remedy = nil
         phase = .idle
         return true
+    }
+
+    /// Nothing has arrived for as long as this mode calls a dropout, so the
+    /// route is being cut right now. The recorder's own bar rather than a new
+    /// number: warning sooner would fire on ordinary jitter.
+    func signalIsWeak(at now: Date) -> Bool {
+        guard phase == .running, let lastFixAt else { return false }
+        return now.timeIntervalSince(lastFixAt) > mode.gapThreshold
     }
 
     private func describe(_ error: any Error) -> String {

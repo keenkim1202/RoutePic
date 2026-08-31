@@ -90,6 +90,11 @@ struct RecordView: View {
         #endif
     }
 
+    /// A tunnel draws nothing on the map and gives no reason. Saying the route
+    /// is cut rather than lost: the stretch is kept as a gap, not joined.
+    static let weakSignalWarning =
+        "Weak signal — no position for a while. The route resumes when it comes back."
+
     // MARK: - Idle
 
     private var modeChooser: some View {
@@ -144,6 +149,13 @@ struct RecordView: View {
     private var activeSession: some View {
         VStack(spacing: 0) {
             if recorder.isLowPowerMode { WarningBanner(text: Self.lowPowerWarning) }
+            // Ticked by the clock, not by fixes: the whole point is the case
+            // where no fix arrives to redraw anything (`DESIGN.md` §14.1).
+            TimelineView(.periodic(from: .now, by: 5)) { tick in
+                if recorder.signalIsWeak(at: tick.date) {
+                    WarningBanner(text: Self.weakSignalWarning)
+                }
+            }
             if let warning = recorder.snapshot?.storageWarning {
                 WarningBanner(text: "Storage problem — the recording is being kept in memory. \(warning)")
             }
