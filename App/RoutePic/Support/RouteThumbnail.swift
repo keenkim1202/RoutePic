@@ -74,9 +74,9 @@ struct RouteThumbnail: View {
         .task(id: "\(activity.id)-\(activity.updatedAt.timeIntervalSince1970)") {
             // Held in memory only, never written to disk: that is what makes a
             // trim change retroactive (`DESIGN.md` §8.4).
-            shape = await environment.renderCache.shape(for: activity, canvasSize: 256)
-            unreadable = shape == nil
-                && !environment.renderCache.summary(for: activity).isReadable
+            let tile = await environment.renderCache.tile(for: activity, canvasSize: 256)
+            shape = tile.shape
+            unreadable = tile.shape == nil && !tile.isReadable
         }
         // Carried here rather than at each use, so a bare one is never silent.
         // The route's own description, not the activity's: this draws the line

@@ -78,6 +78,22 @@ public struct CardRenderer: Sendable {
         public var description: String { "Could not create the card bitmap context." }
     }
 
+    /// Below this a headline is decoration rather than words.
+    static let minimumFontSize: CGFloat = 22
+
+    /// The size a line has to drop to so it fits, or `nil` when it already does.
+    ///
+    /// `drawText` centres on `(width - lineWidth) / 2`, so a line wider than
+    /// the card gets a negative origin and loses both ends. Floored, because a
+    /// headline shrunk to nothing is worse than one that runs to the edges.
+    static func fittedSize(
+        _ fontSize: CGFloat, lineWidth: CGFloat, in width: CGFloat
+    ) -> CGFloat? {
+        let usable = width * 0.86
+        guard lineWidth > usable, lineWidth > 0 else { return nil }
+        return max(minimumFontSize, fontSize * (usable / lineWidth))
+    }
+
     public var aspect: Aspect
     public var palette: Palette
 
@@ -264,8 +280,21 @@ public struct CardRenderer: Sendable {
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String): color,
             ]
         )
-        let line = CTLineCreateWithAttributedString(attributed)
-        let bounds = CTLineGetBoundsWithOptions(line, [])
+        var line = CTLineCreateWithAttributedString(attributed)
+        var bounds = CTLineGetBoundsWithOptions(line, [])
+
+        if let fitted = Self.fittedSize(fontSize, lineWidth: bounds.width, in: width) {
+            let shrunk = CTFontCreateCopyWithAttributes(font, fitted, nil, nil)
+            let refitted = NSAttributedString(
+                string: text,
+                attributes: [
+                    NSAttributedString.Key(kCTFontAttributeName as String): shrunk,
+                    NSAttributedString.Key(kCTForegroundColorAttributeName as String): color,
+                ]
+            )
+            line = CTLineCreateWithAttributedString(refitted)
+            bounds = CTLineGetBoundsWithOptions(line, [])
+        }
 
         context.textPosition = CGPoint(x: (width - bounds.width) / 2, y: y)
         CTLineDraw(line, context)
