@@ -21,6 +21,16 @@ final class RecordingController {
         case failed(String)
     }
 
+    /// What the person can do about a refusal. `DESIGN.md` §14.1 — a banner
+    /// that only states the problem leaves the Settings app as the only way
+    /// forward, and for reduced accuracy there is a way that stays in the app.
+    enum Remedy: Equatable {
+        case openSettings
+        case askForPreciseLocation
+    }
+
+    private(set) var remedy: Remedy?
+
     private(set) var phase: Phase = .idle
 
     /// Why a recording ended without the person asking. Cleared once shown.
@@ -91,6 +101,10 @@ final class RecordingController {
         // a `pumpTask` orphaning the first, and a second `updates()`.
         guard !isRecording, phase != .starting else { return }
         self.mode = mode
+        // The last refusal's remedy does not survive the next attempt: coming
+        // back from Settings with permission granted would otherwise still
+        // offer the button that sent you there.
+        remedy = nil
         streamEnded = false
         handlingInterruption = false
         pendingFixes = []
@@ -126,6 +140,7 @@ final class RecordingController {
             pumpTask?.cancel()
             pumpTask = nil
             phase = .failed(describe(error))
+            remedy = Self.remedy(for: error)
             self.session = nil
             return
         }
@@ -284,6 +299,29 @@ final class RecordingController {
         guard let journalDirectory else { return }
         let url = SessionRecovery.journalURL(for: session.id, in: journalDirectory)
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private static func remedy(for error: any Error) -> Remedy? {
+        switch error as? LocationSourceError {
+        case .authorizationDenied: .openSettings
+        case .reducedAccuracy: .askForPreciseLocation
+        case .unavailable, .none: nil
+        }
+    }
+
+    /// Asks inside the app instead of sending the person to Settings.
+    /// `true` means the refusal is gone and starting is worth another try.
+    func askForPreciseLocation() async -> Bool {
+        guard await locationSource.requestTemporaryFullAccuracy() else {
+            // iOS shows this prompt once a session. A second tap does nothing
+            // and reads as a broken button, so the offer becomes the one that
+            // still works.
+            remedy = .openSettings
+            return false
+        }
+        remedy = nil
+        phase = .idle
+        return true
     }
 
     private func describe(_ error: any Error) -> String {

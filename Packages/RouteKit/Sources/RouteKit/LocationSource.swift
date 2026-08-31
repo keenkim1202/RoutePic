@@ -13,6 +13,17 @@ public protocol LocationSource: Sendable {
     func updates() -> AsyncStream<LocationFix>
     func start(mode: RecordingMode) async throws
     func stop() async
+
+    /// Asks for full accuracy for this session only (`DESIGN.md` §14.1).
+    ///
+    /// Returns whether it was granted. Without it the only way past a
+    /// reduced-accuracy refusal is for the person to find the Settings app.
+    func requestTemporaryFullAccuracy() async -> Bool
+}
+
+extension LocationSource {
+    /// A source with no real authorization to raise cannot grant it either.
+    public func requestTemporaryFullAccuracy() async -> Bool { false }
 }
 
 public enum LocationAuthorization: String, Sendable, Equatable {

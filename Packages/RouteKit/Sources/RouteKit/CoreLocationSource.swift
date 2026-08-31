@@ -43,6 +43,38 @@ public final class ClassicLocationSource: NSObject, LocationSource, @unchecked S
         manager.accuracyAuthorization == .fullAccuracy
     }
 
+    /// The purpose key in `Info.plist`. iOS shows its string in the prompt, and
+    /// a missing or misspelt key fails the request rather than asking.
+    static let temporaryAccuracyPurpose = "RecordingARoute"
+
+    static var purposeKeyIsDeclared: Bool {
+        let dictionary = Bundle.main.object(
+            forInfoDictionaryKey: "NSLocationTemporaryUsageDescriptionDictionary"
+        ) as? [String: Any]
+        return dictionary?[temporaryAccuracyPurpose] != nil
+    }
+
+    public func requestTemporaryFullAccuracy() async -> Bool {
+        if hasFullAccuracy { return true }
+        // A key the bundle does not carry makes iOS decline without showing
+        // anything, which is indistinguishable from the person saying no. Say
+        // it cannot be asked, so the caller offers Settings instead.
+        guard Self.purposeKeyIsDeclared else { return false }
+        #if os(iOS)
+        return await withCheckedContinuation { continuation in
+            manager.requestTemporaryFullAccuracyAuthorization(
+                withPurposeKey: Self.temporaryAccuracyPurpose
+            ) { _ in
+                // The error says why the prompt did not appear, not what the
+                // person chose — so the authorization itself is the answer.
+                continuation.resume(returning: self.hasFullAccuracy)
+            }
+        }
+        #else
+        return false
+        #endif
+    }
+
     public func updates() -> AsyncStream<LocationFix> {
         AsyncStream { continuation in
             lock.withLock { self.continuation = continuation }
