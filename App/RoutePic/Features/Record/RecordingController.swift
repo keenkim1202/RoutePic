@@ -166,8 +166,8 @@ final class RecordingController {
         // Counted from here, not from the top of `start`: the authorization
         // prompt sits in between, and a person who took two minutes over it
         // would arrive at a running session already reading as a dropout.
-        // Set even though fixes may have arrived, so a session that never gets
-        // one warns too.
+        // Only when nothing has arrived yet — a fix delivered during the
+        // starting phase already stamped a real time, which beats this one.
         if lastFixAt == nil { lastFixAt = Date() }
         phase = .running
         snapshot = await session.snapshot()

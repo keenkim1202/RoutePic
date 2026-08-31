@@ -399,21 +399,29 @@ struct CollectionView: View {
 struct ActivityTile: View {
     let activity: Activity
     @Environment(AppEnvironment.self) private var environment
+    @State private var picture: Image?
+    @State private var readable = true
 
     var body: some View {
-        // Through the cache: the grid re-evaluates every visible tile on each
-        // update, and both of these used to decode from scratch each time.
-        let readable = environment.renderCache.summary(for: activity).isReadable
-
-        return ZStack {
-            if let artwork = activity.artworks.first(where: \.isSelected) ?? activity.artworks.first,
-               let image = environment.renderCache.image(
-                   named: artwork.thumbnailFileName, from: environment.artworkStore
-               ) {
-                image.resizable().scaledToFill()
+        ZStack {
+            if let picture {
+                picture.resizable().scaledToFill()
             } else {
                 RouteThumbnail(activity: activity)
             }
+        }
+        .task(id: activity.updatedAt) {
+            // Off the main actor: a file read and an image decode per tile is
+            // the stutter this exists to remove.
+            readable = await environment.renderCache.tile(
+                for: activity, canvasSize: 256
+            ).isReadable
+            guard let artwork = activity.artworks.first(where: \.isSelected)
+                ?? activity.artworks.first
+            else { return }
+            picture = await environment.renderCache.image(
+                named: artwork.thumbnailFileName, from: environment.artworkStore
+            )
         }
         .overlay(alignment: .topTrailing) {
             // The thumbnail carries its own marker, but a damaged activity

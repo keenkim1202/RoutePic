@@ -113,20 +113,13 @@ public final class Activity {
     /// a decode failure means data loss, and silently showing nothing would
     /// hide it.
     public func route() throws -> Route {
-        let points = try PolylineCodec.decode(routeBlob)
-        guard let segments = try? JSONDecoder().decode([RouteSegment].self, from: segmentsBlob) else {
-            // Neither guess is available. One long moving run draws the
-            // straight line across a dropout this field exists to prevent;
-            // rebuilding from the stored timestamps invents a gap wherever
-            // somebody sat still long enough for their fixes to be filtered
-            // out — `RecordingSession.ingest` measures against the last fix it
-            // could position from, and `routeBlob` does not keep those.
-            //
-            // A route is a claim about where a person went, so a lost
-            // segmentation is refused the same way lost coordinates are.
-            throw StoredRouteFailure.segmentationLost
-        }
-        return Route(points: points, segments: segments)
+        try storedRoute.decode()
+    }
+
+    /// The stored bytes on their own, so a caller can decode them off the
+    /// actor this model belongs to — the grid decodes one per tile.
+    public var storedRoute: StoredRoute {
+        StoredRoute(routeBlob: routeBlob, segmentsBlob: segmentsBlob)
     }
 
     /// Everything a screen asks about a stored route, from one decode.
@@ -158,6 +151,36 @@ public final class Activity {
     public var isRouteReadable: Bool { routeSummary().isReadable }
 
     public var gapCount: Int { routeSummary().gapCount }
+}
+
+/// The two blobs a route is stored as, and the decode of them. `Sendable` and
+/// free of the model, so the decode can happen off the actor holding the row.
+public struct StoredRoute: Sendable {
+    public let routeBlob: Data
+    public let segmentsBlob: Data
+
+    public init(routeBlob: Data, segmentsBlob: Data) {
+        self.routeBlob = routeBlob
+        self.segmentsBlob = segmentsBlob
+    }
+
+    /// Throws rather than returning an empty route: a decode failure means
+    /// data loss, and silently showing nothing would hide it.
+    public func decode() throws -> Route {
+        let points = try PolylineCodec.decode(routeBlob)
+        // Neither guess is available. One long moving run draws the straight
+        // line across a dropout this field exists to prevent; rebuilding from
+        // the stored timestamps invents a gap wherever somebody sat still long
+        // enough for their fixes to be filtered out — `RecordingSession.ingest`
+        // measures against the last fix it could position from, and
+        // `routeBlob` does not keep those.
+        //
+        // A route is a claim about where a person went, so a lost segmentation
+        // is refused the same way lost coordinates are.
+        guard let segments = try? JSONDecoder().decode([RouteSegment].self, from: segmentsBlob)
+        else { throw StoredRouteFailure.segmentationLost }
+        return Route(points: points, segments: segments)
+    }
 }
 
 /// Why a stored route could not be handed back.
