@@ -44,6 +44,58 @@ public struct ShapeFingerprint: Sendable, Equatable, Codable {
     /// Fraction of the 32×32 grid the route touches.
     public let occupancyFillRatio: Double
 
+    /// How far the distance from the centre moves between the first third of
+    /// the route and the last, as a fraction of the mean. Negative winds inward.
+    ///
+    /// Direction agreement alone cannot tell a spiral from an arc: a 270° bend
+    /// of constant radius never changes direction either, and "winding inward"
+    /// would describe something it does not do.
+    public let radialDrift: Double
+
+    /// How many separate strokes the route is drawn in. More than one means a
+    /// pause or a dropout, and the renderer leaves the space between them
+    /// blank.
+    ///
+    /// Anything claimed about a shape *travelling* — winding, closing in — has
+    /// to hold within one stroke: the aggregate measures add turns and radii
+    /// across gaps nobody walked.
+    public let strokeCount: Int
+
+    /// How close a closed route is to a circle: 4π·area ÷ perimeter². 1 is a
+    /// circle exactly, and every other shape is less.
+    ///
+    /// `convexRatio` cannot answer this — it is area over hull area, which any
+    /// convex shape drives to 1. An egg and a circle score the same there.
+    /// `nil` for the same routes `convexRatio` refuses.
+    public let circularity: Double?
+
+    /// How far the direction of travel swings in total, in radians, summed with
+    /// sign. A full circle is 2π; a hairpin is about π however long its arms.
+    ///
+    /// Direction agreement cannot stand in for this: a route with one turn
+    /// agrees with itself perfectly and has wound around nothing.
+    public let totalTurning: Double
+
+    /// How many times the turning direction flips, counted over stretches of
+    /// one direction rather than over samples. A zigzag of eight teeth is
+    /// seven; an S is one; an arc is none.
+    ///
+    /// Not a share of neighbouring samples: `Smoothing.flatten` emits eight
+    /// per curve, so one tooth is several same-signed micro-turns and any
+    /// per-sample ratio is a measure of the sampling rate.
+    ///
+    /// Not an even balance of left and right either: a route that turns left
+    /// for its first half and right for its second is balanced and flips once.
+    public let turnReversals: Int
+
+    /// The share of turns that go the way most of them go. 0.5 is a route that
+    /// turns each way equally often; 1 never changes its mind.
+    ///
+    /// `turnSkewness` was read for this and cannot answer it: it is the third
+    /// centred moment, so it measures how lopsided the sizes are, and it is
+    /// zero for the clearest case of all — a spiral whose turns are identical.
+    public let turnAgreement: Double
+
     /// How many distinct protrusions stick out from the shape's centre — the
     /// legs, horns and tails a subject would need.
     ///
@@ -74,7 +126,13 @@ public struct ShapeFingerprint: Sendable, Equatable, Codable {
         occupancyFillRatio: Double,
         protrusionCount: Int,
         selfIntersectionCount: Int,
-        convexRatio: Double?
+        convexRatio: Double?,
+        turnAgreement: Double = 0.5,
+        radialDrift: Double = 0,
+        turnReversals: Int = 0,
+        totalTurning: Double = 0,
+        circularity: Double? = nil,
+        strokeCount: Int = 1
     ) {
         self.closureRatio = closureRatio
         self.aspectRatio = aspectRatio
@@ -86,6 +144,12 @@ public struct ShapeFingerprint: Sendable, Equatable, Codable {
         self.protrusionCount = protrusionCount
         self.selfIntersectionCount = selfIntersectionCount
         self.convexRatio = convexRatio
+        self.turnAgreement = turnAgreement
+        self.radialDrift = radialDrift
+        self.turnReversals = turnReversals
+        self.totalTurning = totalTurning
+        self.circularity = circularity
+        self.strokeCount = strokeCount
     }
 
     public var isClosed: Bool { closureRatio <= Self.closureThreshold }
@@ -137,8 +201,16 @@ extension ShapeFingerprint {
             return min(max(box.width / box.height, 1 / aspectCeiling), aspectCeiling)
         }()
 
-        let angles = runs.flatMap { Geometry.turningAngles($0) }
+        let anglesPerRun = runs.map { Geometry.turningAngles($0) }
+        let angles = anglesPerRun.flatMap { $0 }
         let (meanAbsoluteTurn, turnVariance, turnSkewness) = angleStatistics(angles)
+        let floor = noiseFloor(meanAbsoluteTurn)
+        let turnAgreement = agreement(angles, floor: floor)
+        let radialDrift = drift(all)
+        // Per run: flattened, the last turn before a dropout and the first one
+        // after it are neighbours, and two disconnected runs with one turn each
+        // report as a perfect zigzag.
+        let turnReversals = reversals(anglesPerRun, floor: floor)
 
         let grid = OccupancyGrid.rasterize(runs, canvasSize: canvasSize, gridSize: gridSize)
         let selfIntersections = countSelfIntersections(runs)
@@ -148,7 +220,12 @@ extension ShapeFingerprint {
             // Shoelace sums signed area, so a self-crossing loop's lobes cancel
             // and the ratio collapses towards zero — a number that looks like a
             // measurement but means nothing. Only simple closed curves qualify.
-            guard closed, selfIntersections == 0, all.count >= 3 else { return nil }
+            // One stroke only. Flattened, a route with a pause or a dropout
+            // gains an edge from the end of each run to the start of the next,
+            // and both the area and the perimeter then describe a polygon the
+            // renderer deliberately leaves open.
+            guard closed, runs.count == 1, selfIntersections == 0, all.count >= 3
+            else { return nil }
             let hullArea = Geometry.shoelaceArea(Geometry.convexHull(all))
             guard hullArea > 1e-9 else { return nil }
             return Geometry.shoelaceArea(all) / hullArea
@@ -164,8 +241,77 @@ extension ShapeFingerprint {
             occupancyFillRatio: grid.fillRatio,
             protrusionCount: countProtrusions(all, closed: closed),
             selfIntersectionCount: selfIntersections,
-            convexRatio: convexRatio
+            convexRatio: convexRatio,
+            turnAgreement: turnAgreement,
+            radialDrift: radialDrift,
+            turnReversals: turnReversals,
+            totalTurning: angles.reduce(0, +),
+            circularity: convexRatio == nil ? nil : circularity(all),
+            strokeCount: runs.count
         )
+    }
+
+    /// Turns below this share of the route's own mean turn are the flattener's
+    /// noise, not a decision to go left.
+    ///
+    /// Relative, not absolute: `Smoothing.flatten` emits eight samples a curve,
+    /// so a smooth route spreads every real bend across angles far below any
+    /// fixed cutoff — and a fixed one discarded all of them.
+    static let significantTurnShare = 0.25
+
+    private static func circularity(_ points: [Point2D]) -> Double? {
+        guard points.count >= 3 else { return nil }
+        var perimeter = 0.0
+        for (a, b) in zip(points, points.dropFirst()) { perimeter += a.distance(to: b) }
+        if let first = points.first, let last = points.last {
+            perimeter += last.distance(to: first)
+        }
+        guard perimeter > 1e-9 else { return nil }
+        let area = Geometry.shoelaceArea(points)
+        return min(1, 4 * .pi * area / (perimeter * perimeter))
+    }
+
+    private static func drift(_ points: [Point2D]) -> Double {
+        guard points.count >= 9 else { return 0 }
+        let centroid = Point2D(
+            x: points.reduce(0) { $0 + $1.x } / Double(points.count),
+            y: points.reduce(0) { $0 + $1.y } / Double(points.count)
+        )
+        let radii = points.map { $0.distance(to: centroid) }
+        let third = radii.count / 3
+        let mean = radii.reduce(0, +) / Double(radii.count)
+        guard mean > 1e-9 else { return 0 }
+        let first = radii.prefix(third).reduce(0, +) / Double(third)
+        let last = radii.suffix(third).reduce(0, +) / Double(third)
+        return (last - first) / mean
+    }
+
+    private static func reversals(_ runs: [[Double]], floor: Double) -> Int {
+        var flips = 0
+        for run in runs {
+            // Per run: flattened, the last turn before a dropout and the first
+            // after it would count as a change of mind nobody made.
+            var direction = 0
+            for angle in run where abs(angle) > floor {
+                let sign = angle > 0 ? 1 : -1
+                if direction != 0 && sign != direction { flips += 1 }
+                direction = sign
+            }
+        }
+        return flips
+    }
+
+    /// Below the mean turn there is nothing to disagree about, and a route with
+    /// no turns at all agrees with nothing.
+    static func noiseFloor(_ meanAbsoluteTurn: Double) -> Double {
+        max(meanAbsoluteTurn * significantTurnShare, 1e-9)
+    }
+
+    private static func agreement(_ angles: [Double], floor: Double) -> Double {
+        let decided = angles.filter { abs($0) > floor }
+        guard !decided.isEmpty else { return 0.5 }
+        let left = decided.count { $0 > 0 }
+        return Double(max(left, decided.count - left)) / Double(decided.count)
     }
 
     private static func angleStatistics(_ angles: [Double]) -> (Double, Double, Double) {
