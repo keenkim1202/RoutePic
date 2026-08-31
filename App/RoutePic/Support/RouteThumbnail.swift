@@ -43,6 +43,7 @@ enum PlatformImage {
 struct RouteThumbnail: View {
     let activity: Activity
 
+    @Environment(AppEnvironment.self) private var environment
     @State private var shape: OrientedShape?
     @State private var unreadable = false
 
@@ -68,13 +69,14 @@ struct RouteThumbnail: View {
                 }
             }
         }
-        .task(id: activity.id) {
-            // Always derived, never cached to disk: that is what makes a trim
-            // change retroactive (`DESIGN.md` §8.4).
-            shape = try? DerivedRoute
-                .make(from: activity, purpose: .display, canvasSize: 256)
-                .shape.canonical
-            unreadable = shape == nil && !activity.isRouteReadable
+        // Both halves: the grid reuses a tile for a different activity, and an
+        // edit to the same one has to redraw.
+        .task(id: "\(activity.id)-\(activity.updatedAt.timeIntervalSince1970)") {
+            // Held in memory only, never written to disk: that is what makes a
+            // trim change retroactive (`DESIGN.md` §8.4).
+            shape = await environment.renderCache.shape(for: activity, canvasSize: 256)
+            unreadable = shape == nil
+                && !environment.renderCache.summary(for: activity).isReadable
         }
         // Carried here rather than at each use, so a bare one is never silent.
         // The route's own description, not the activity's: this draws the line

@@ -33,6 +33,8 @@ final class AppEnvironment {
     let container: ModelContainer
     let repository: ActivityRepository
     let artworkStore: any ArtworkStore
+    /// Shared so a tile keeps what it worked out when the grid scrolls it back.
+    let renderCache = RouteRenderCache()
     let recorder: RecordingController
 
     /// A storage problem the user needs to know about (`DESIGN.md` §14.1).
