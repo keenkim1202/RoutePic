@@ -194,7 +194,7 @@ struct ActivityDetailView: View {
     private func shapeReading(_ interpretation: ShapeInterpretation) -> some View {
         if let candidate = interpretation.candidates.first {
             VStack(alignment: .leading, spacing: 6) {
-                Text(candidate.headline).font(.title3.weight(.semibold))
+                Text(candidate.subject.headline).font(.title3.weight(.semibold))
                 Text(candidate.why).font(.subheadline).foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -204,8 +204,9 @@ struct ActivityDetailView: View {
             // a route can match nothing without being straight, and the card
             // and this screen have to say the same thing about it.
             VStack(alignment: .leading, spacing: 6) {
-                Text(CardRenderer.unnamedSubject).font(.title3.weight(.semibold))
-                Text(CardRenderer.unnamedReason)
+                Text(FingerprintInterpreter.unrecognised.subject)
+                    .font(.title3.weight(.semibold))
+                Text(FingerprintInterpreter.unrecognised.why)
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -374,8 +375,8 @@ struct ActivityDetailView: View {
                 // They agree today — `purpose` decides only whether a map
                 // snapshot is safe — and reusing the other would go stale the
                 // day it stops deciding only that.
-                subject: shared?.headline,
-                reason: shared?.why
+                subject: (shared?.subject ?? FingerprintInterpreter.unrecognised.subject).headline,
+                reason: shared?.why ?? FingerprintInterpreter.unrecognised.why
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -419,11 +420,3 @@ extension CGImage {
     }
 }
 
-extension SubjectCandidate {
-    /// Sentence case. The subjects are written as fragments — "curled sleeping
-    /// cat" — because Stage 2 wanted them inside a prompt, and a headline is
-    /// where they are read now.
-    var headline: String {
-        subject.prefix(1).uppercased() + subject.dropFirst()
-    }
-}

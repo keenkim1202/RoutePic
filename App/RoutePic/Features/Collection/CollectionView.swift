@@ -122,7 +122,7 @@ struct CollectionView: View {
                         Section {
                             ForEach(month.activities) { activity in
                                 NavigationLink(value: activity.id) {
-                                    ActivityTile(activity: activity)
+                                    ActivityGridCell(activity: activity)
                                 }
                                 .buttonStyle(.plain)
                                 .onAppear { loadMoreIfLast(activity) }
@@ -395,12 +395,45 @@ struct CollectionView: View {
     }
 }
 
+/// One square in the grid, with what it reads as written on it.
+///
+/// Under the square instead, three across, it is two wrapped lines of caption
+/// per tile and the mosaic stops being one.
+struct ActivityGridCell: View {
+    let activity: Activity
+    @State private var subject: String?
+
+    var body: some View {
+        ActivityTile(activity: activity, subject: $subject)
+            .overlay(alignment: .bottomLeading) {
+                if let subject {
+                    Text(subject.headline)
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.bottom, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.65)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
+            }
+    }
+}
+
 /// One square in the grid.
 struct ActivityTile: View {
     let activity: Activity
     @Environment(AppEnvironment.self) private var environment
     @State private var picture: Image?
     @State private var readable = true
+    /// Published so the feed card can lead with it rather than derive it again.
+    @Binding var subject: String?
 
     var body: some View {
         ZStack {
@@ -413,15 +446,21 @@ struct ActivityTile: View {
         .task(id: activity.updatedAt) {
             // Off the main actor: a file read and an image decode per tile is
             // the stutter this exists to remove.
-            readable = await environment.renderCache.tile(
-                for: activity, canvasSize: 256
-            ).isReadable
-            guard let artwork = activity.artworks.first(where: \.isSelected)
-                ?? activity.artworks.first
-            else { return }
-            picture = await environment.renderCache.image(
-                named: artwork.thumbnailFileName, from: environment.artworkStore
-            )
+            let tile = await environment.renderCache.tile(for: activity, canvasSize: 256)
+            readable = tile.isReadable
+            // A picture carries the subject it was made from, which need not be
+            // what the interpreter would pick today. The detail screen shows
+            // the stored one, so the tile under it has to agree.
+            let shown = activity.artworks.first(where: \.isSelected) ?? activity.artworks.first
+            if let shown {
+                picture = await environment.renderCache.image(
+                    named: shown.thumbnailFileName, from: environment.artworkStore
+                )
+            }
+            // Named after what is drawn, not after what a row claims exists: a
+            // missing or corrupt thumbnail falls back to the route line, and a
+            // caption for the picture would describe something not on screen.
+            subject = picture == nil ? tile.subject : shown?.subject
         }
         .overlay(alignment: .topTrailing) {
             // The thumbnail carries its own marker, but a damaged activity
@@ -436,10 +475,21 @@ struct ActivityTile: View {
         .frame(minHeight: 0)
         .aspectRatio(1, contentMode: .fill)
         .clipped()
+        // The reading is drawn on the tile, so it has to be spoken with it —
+        // a label that names only the distance describes a different tile. Not
+        // when a picture is shown: its own subject is already in the
+        // description, and the two can disagree.
+        // Split on what was drawn, exactly as the caption is. Keyed on whether
+        // a row exists, a picture that failed to decode was still described
+        // while the route line was the thing on screen.
         .accessibilityLabel(
-            readable
-                ? activity.accessibilityDescription
-                : "\(activity.accessibilityDescription) This recording could not be read."
+            [
+                picture == nil ? subject?.headline : nil,
+                picture == nil ? activity.routeDescription : activity.accessibilityDescription,
+                readable ? nil : "This recording could not be read.",
+            ]
+            .compactMap { $0 }
+            .joined(separator: ". ")
         )
     }
 }
@@ -447,11 +497,20 @@ struct ActivityTile: View {
 /// A single entry in the chronological layout.
 struct ActivityFeedCard: View {
     let activity: Activity
+    @State private var subject: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ActivityTile(activity: activity)
+            ActivityTile(activity: activity, subject: $subject)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
+
+            // The reading leads: the distance is on every tracker, and what the
+            // route looked like is on none of them. Hidden from VoiceOver: the
+            // card combines its children into the tile's own label, which
+            // already opens with this, and it would be read out twice.
+            if let subject {
+                Text(subject.headline).font(.headline).accessibilityHidden(true)
+            }
 
             HStack {
                 Label(activity.mode.title, systemImage: activity.mode.symbol)
