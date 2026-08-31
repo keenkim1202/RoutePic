@@ -52,10 +52,10 @@ struct RecordView: View {
         }
     }
 
-    /// iOS lowers location accuracy in Low Power Mode on its own
-    /// (`DESIGN.md` §14.1); saying so is the only warning the route will thin.
+    /// The app lowers its own accuracy here (`DESIGN.md` §14.1) — iOS does not
+    /// touch what an app asks Core Location for, so this says what we did.
     static let lowPowerWarning =
-        "Low Power Mode is on. iOS sends fewer location updates, so this route will be coarser."
+        "Low Power Mode is on, so the route is recorded at lower accuracy to save battery."
 
     // MARK: - Idle
 

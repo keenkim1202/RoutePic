@@ -12,6 +12,10 @@ public final class ClassicLocationSource: NSObject, LocationSource, @unchecked S
     private let lock = NSLock()
     private var continuation: AsyncStream<LocationFix>.Continuation?
     private var authorizationContinuation: CheckedContinuation<Void, Error>?
+    /// The mode of the running session, so the power-state watcher can re-apply
+    /// the accuracy for it. Nil when nothing is recording.
+    private var runningMode: RecordingMode?
+    private var powerWatcher: Task<Void, Never>?
 
     public override init() {
         super.init()
@@ -57,8 +61,10 @@ public final class ClassicLocationSource: NSObject, LocationSource, @unchecked S
         }
         guard hasFullAccuracy else { throw LocationSourceError.reducedAccuracy }
 
-        manager.desiredAccuracy = Self.desiredAccuracy(for: mode)
+        lock.withLock { runningMode = mode }
+        applyAccuracy(for: mode)
         manager.activityType = Self.activityType(for: mode)
+        watchPowerState()
 
         #if os(iOS)
         // When In Use is sufficient *while a foreground-started session runs*,
@@ -78,10 +84,15 @@ public final class ClassicLocationSource: NSObject, LocationSource, @unchecked S
         manager.allowsBackgroundLocationUpdates = false
         #endif
 
-        let continuation = lock.withLock {
-            defer { self.continuation = nil }
-            return self.continuation
+        let (continuation, watcher) = lock.withLock {
+            defer {
+                self.continuation = nil
+                self.runningMode = nil
+                self.powerWatcher = nil
+            }
+            return (self.continuation, self.powerWatcher)
         }
+        watcher?.cancel()
         continuation?.finish()
     }
 
@@ -92,11 +103,44 @@ public final class ClassicLocationSource: NSObject, LocationSource, @unchecked S
         }
     }
 
-    static func desiredAccuracy(for mode: RecordingMode) -> CLLocationAccuracy {
-        switch mode {
-        case .walk: kCLLocationAccuracyBest
-        case .run, .drive: kCLLocationAccuracyBestForNavigation
+    /// One step down in Low Power Mode.
+    ///
+    /// iOS does not touch the accuracy an app asks for — Low Power Mode is a
+    /// signal to the app, not a change to Core Location. Left alone, the most
+    /// expensive setting keeps running on the emptiest battery, which is the
+    /// state `DESIGN.md` §14.1 exists to handle.
+    static func desiredAccuracy(
+        for mode: RecordingMode, lowPower: Bool = false
+    ) -> CLLocationAccuracy {
+        switch (mode, lowPower) {
+        case (.walk, false): kCLLocationAccuracyBest
+        case (.walk, true): kCLLocationAccuracyNearestTenMeters
+        case (.run, false), (.drive, false): kCLLocationAccuracyBestForNavigation
+        case (.run, true), (.drive, true): kCLLocationAccuracyBest
         }
+    }
+
+    private func applyAccuracy(for mode: RecordingMode) {
+        manager.desiredAccuracy = Self.desiredAccuracy(
+            for: mode, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled
+        )
+    }
+
+    /// Low Power Mode can be switched on halfway through a run, and the setting
+    /// applied at `start` would then outlive the battery it was chosen for.
+    private func watchPowerState() {
+        guard lock.withLock({ powerWatcher == nil }) else { return }
+        let changes = NotificationCenter.default.notifications(
+            named: .NSProcessInfoPowerStateDidChange
+        )
+        let task = Task { [weak self] in
+            for await _ in changes {
+                guard let self, let mode = self.lock.withLock({ self.runningMode })
+                else { return }
+                self.applyAccuracy(for: mode)
+            }
+        }
+        lock.withLock { powerWatcher = task }
     }
 
     static func activityType(for mode: RecordingMode) -> CLActivityType {
