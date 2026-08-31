@@ -10,7 +10,6 @@
 		8BB3D98C09BE5C9580D743A8 /* RouteKit */ = {isa = PBXBuildFile; productRef = 985B29F49EC65B8D85393343 /* RouteKit */; };
 		0B5E28B8013B5A25BC19C617 /* RoutePicStore */ = {isa = PBXBuildFile; productRef = C89F1F8382EB56A19D583BF2 /* RoutePicStore */; };
 		3BBDAACEB5E742769E4D6701 /* GenerationKit */ = {isa = PBXBuildFile; productRef = 8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */; };
-		C7C8B6B1D2F24686AB93B9D2 /* GenerationCoreML */ = {isa = PBXBuildFile; productRef = 8A1149C4851943F98A9EF472 /* GenerationCoreML */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,7 +34,6 @@
 				8BB3D98C09BE5C9580D743A8 /* RouteKit */,
 				0B5E28B8013B5A25BC19C617 /* RoutePicStore */,
 				3BBDAACEB5E742769E4D6701 /* GenerationKit */,
-				C7C8B6B1D2F24686AB93B9D2 /* GenerationCoreML */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,7 +78,6 @@
 				985B29F49EC65B8D85393343 /* RouteKit */,
 				C89F1F8382EB56A19D583BF2 /* RoutePicStore */,
 				8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */,
-				8A1149C4851943F98A9EF472 /* GenerationCoreML */,
 			);
 			productName = RoutePic;
 			productReference = D44F6A826D1E5ADABE38EA2C /* RoutePic.app */;
@@ -252,7 +249,6 @@
 		985B29F49EC65B8D85393343 /* RouteKit */ = { isa = XCSwiftPackageProductDependency; productName = RouteKit; };
 		C89F1F8382EB56A19D583BF2 /* RoutePicStore */ = { isa = XCSwiftPackageProductDependency; productName = RoutePicStore; };
 		8B5B3DB16F8D4BD39A2CDABE /* GenerationKit */ = { isa = XCSwiftPackageProductDependency; productName = GenerationKit; };
-		8A1149C4851943F98A9EF472 /* GenerationCoreML */ = { isa = XCSwiftPackageProductDependency; productName = GenerationCoreML; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A9057D79CD46577194B612F6 /* Project object */;

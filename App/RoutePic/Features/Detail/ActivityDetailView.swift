@@ -14,7 +14,6 @@ struct ActivityDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showsRouteOverlay = false
-    @State private var showsGenerate = false
     @State private var note: String = ""
     @State private var shareItem: ShareableCard?
     @State private var showsDeleteConfirmation = false
@@ -45,7 +44,6 @@ struct ActivityDetailView: View {
         .toolbar { toolbar }
         .task { note = activity.note ?? "" }
         .sheet(item: $shareItem) { ShareCardSheet(card: $0) }
-        .sheet(isPresented: $showsGenerate) { GenerateSheet(activity: activity) }
         .alert(
             "Something went wrong",
             isPresented: Binding(
@@ -244,7 +242,6 @@ struct ActivityDetailView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button("Make a picture", systemImage: "wand.and.stars") { showsGenerate = true }
                 Button("Share…", systemImage: "square.and.arrow.up") { prepareShare() }
                 Button("Export GPX", systemImage: "arrow.down.doc") { exportGPX() }
                 Divider()
